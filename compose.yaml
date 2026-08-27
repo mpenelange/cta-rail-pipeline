@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    environment:
+      CTA_DB_PATH: /data/cta.db
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+    ports:
+      - "8000:8000"
+    volumes:
+      - cta-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  cta-data:

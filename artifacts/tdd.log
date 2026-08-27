@@ -1,0 +1,74 @@
+RED 2026-08-27: PYTHONPATH=src python3 -m unittest discover -s tests -v
+Expected: ModuleNotFoundError: No module named 'cta_pipeline' (production package not written yet).
+GREEN 2026-08-27: First tracer suite reached 6/6 passing after minimal normalization, extraction, persistence, API, and dashboard implementation.
+
+RED 2026-08-27: PYTHONPATH=src python3 -m unittest tests.test_robustness -v
+Expected: ModuleNotFoundError: No module named 'cta_pipeline.__main__' (CLI lifecycle not implemented).
+GREEN 2026-08-27: Robustness slice reached 6/6 passing: CLI demo/init, client contract, failed-run audit, migrations, ridership, and HTTP safety.
+
+RED 2026-08-27: targeted API filters + LLM validation tests
+Expected: API ignored line/severity/planned/search parameters; received 2 alerts instead of the Red match.
+GREEN 2026-08-27: targeted slice reached 2/2 passing with server-side filters; schema-valid model extraction and secret-boundary test remained green.
+
+FINAL GREEN 2026-08-27:
+- PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v -> 14 tests passed.
+- python3 -m compileall -q src tests -> passed.
+- isolated demo -> 2 alerts, 2 new versions, 2 ridership rows.
+- HTTP smoke -> health ok, dashboard rendered (5,581 bytes), Red filter returned 1; server stopped with Ctrl-C.
+- isolated live CTA ingest -> network available; 13 alerts seen, 13 versions, snapshot sha256 428e7b92bc6d3d4aafc44d6a31e8d59d029ea633e5ab7b818e5af91743c44a57.
+
+RED 2026-08-27 blocking review regressions:
+- `PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_blocking_findings.py' -v`
+- Collection failed because `PayloadError` did not exist, confirming malformed CTA envelopes had no rejecting contract. The added suite also targets bounded response/data sizes, A-B-A upgrades, active snapshots, atomic failure auditing, extraction transaction boundaries, Socrata semantics, and API query bounds.
+
+RED 2026-08-27 full compatibility run:
+- 26 tests ran: 24 passed, 1 failed, 1 errored.
+- Existing tests still expected a missing `Alert` container to mean empty success and only one schema migration; both expectations were updated to the reviewed contracts.
+
+GREEN 2026-08-27 blocking review regressions:
+- Focused blocker suite: 14/14 passed, including multi-page Socrata retrieval and persisted refresh metadata.
+- Strict full suite: 28/28 passed with `-W error::ResourceWarning`.
+
+FINAL GREEN 2026-08-27 blocking review verification:
+- `python3 -m compileall -q src tests` passed.
+- Offline demo twice: first run 2 alerts/2 versions/2 ridership rows; second run 2 alerts/0 versions/2 ridership rows; both reported complete service date 2026-08-25.
+- Mocked API/dashboard coverage in the full suite: 4 tests passed; all test servers were shut down and joined/closed.
+- Live disposable-db ingest succeeded: 14 CTA alerts/14 versions; Socrata service date 2026-06-30, 144 rows, complete; exit status 0. Temporary database removed.
+
+RED 2026-08-27 blocking regression suite (expected failures before implementation):
+test_blocking_findings (unittest.loader._FailedTest.test_blocking_findings) ... ERROR
+
+======================================================================
+ERROR: test_blocking_findings (unittest.loader._FailedTest.test_blocking_findings)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_blocking_findings
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/unittest/loader.py", line 396, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "/usr/lib/python3.13/unittest/loader.py", line 339, in _get_module_from_name
+    __import__(name)
+    ~~~~~~~~~~^^^^^^
+  File "/root/apps/cta-rail-pipeline/tests/test_blocking_findings.py", line 14, in <module>
+    from cta_pipeline.normalize import PayloadError, normalize_payload
+ImportError: cannot import name 'PayloadError' from 'cta_pipeline.normalize' (/root/apps/cta-rail-pipeline/src/cta_pipeline/normalize.py)
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)
+
+RED 2026-08-27 malformed alert snapshot regressions:
+- `PYTHONPATH=src python3 -m unittest tests.test_blocking_findings.EnvelopeTests -v`
+- 4 tests ran with 8 failures and 1 error. Non-object members, absent IDs, empty/blank IDs,
+  and duplicate IDs were not rejected as PayloadError; malformed snapshots reached persistence
+  and could deactivate the prior authoritative alert.
+
+GREEN 2026-08-27 malformed alert snapshot fix:
+- Focused envelope regressions: 4/4 passed.
+- Strict blocking suite: `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_blocking_findings -v` -> 16/16 passed.
+- Strict full suite: `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v` -> 30/30 passed.
+- `python3 -m compileall -q src tests` -> passed.
+- Malformed members, unusable IDs, and duplicate canonical source IDs now raise PayloadError;
+  failed ingestion is audited without changing prior alert, version, activity, or snapshot state.
+  An explicit empty Alert array remains a valid authoritative empty snapshot.
