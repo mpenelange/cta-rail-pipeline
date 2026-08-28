@@ -34,7 +34,7 @@ class MigrationAndFailureTests(unittest.TestCase):
     def test_migration_is_idempotent_and_foreign_keys_enabled(self):
         with tempfile.TemporaryDirectory() as d:
             db=Database(Path(d)/'db.sqlite'); db.migrate(); db.migrate()
-            self.assertEqual(db.scalar('select count(*) from schema_migrations'), 2)
+            self.assertEqual(db.scalar('select count(*) from schema_migrations'), 4)
             with db.connect() as con: self.assertEqual(con.execute('pragma foreign_keys').fetchone()[0], 1)
     def test_failed_ingest_is_recorded(self):
         with tempfile.TemporaryDirectory() as d:

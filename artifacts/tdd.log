@@ -118,3 +118,164 @@ FINAL GREEN 2026-08-28 verification:
   confirming the original CMD is the final exec'd PID 1.
 - Container log -> `{"database": "/data/cta.db", "host": "0.0.0.0", "port": 8000,
   "status": "serving"}`. Health container was stopped and removed.
+
+RED 2026-08-28 GTFS-Realtime telemetry vertical slice:
+- `PYTHONPATH=src python3 -m unittest tests.test_telemetry -v`
+- Exact result: 1 loader test ran and failed with `ModuleNotFoundError: No module named
+  'cta_pipeline.telemetry'`; exit status 1. The new offline contract could not import the
+  telemetry client/pipeline implementation.
+
+GREEN 2026-08-28 telemetry client/persistence/anomaly slices:
+- `PYTHONPATH=src python3 -m unittest tests.test_telemetry.PersistenceAnomalyTests tests.test_telemetry.ClientEnvelopeTests -v`
+- Intermediate result: 6 tests ran; 5 passed and the oversized-response assertion failed because
+  the safe wrapper retained `ValueError` but not the non-secret `too large` detail.
+- After preserving only that bounded-reader detail, `PYTHONPATH=src python3 -m unittest
+  tests.test_telemetry -v` ran 8 tests; 7 passed and the CLI stdout capture test failed because
+  the legacy `emit` default stream was bound at import time.
+- After explicitly passing current stdout, `PYTHONPATH=src python3 -W error::ResourceWarning
+  -m unittest tests.test_telemetry -v` ran 10 tests; 9 passed and strict malformed LLM output
+  exposed an uncaught empty-choices `IndexError`.
+- The model adapter now treats that shape as schema failure and the tests close every direct
+  SQLite connection deterministically.
+
+GREEN 2026-08-28 compatibility checkpoint:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+- Exact result: 43 tests ran in 2.847s and passed (`OK`), including all prior alert,
+  ridership, CLI, API, migration, and container-entrypoint tests plus the telemetry slices.
+
+FINAL GREEN 2026-08-28 GTFS-Realtime verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_telemetry -v`
+  -> 10/10 telemetry tests passed in 1.125s (`OK`).
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> 43/43 tests passed in 3.374s (`OK`), with ResourceWarning promoted to errors.
+- `python3 -m compileall -q src tests` -> `compileall: passed`, exit 0.
+- `CTA_API_KEY=offline-placeholder docker compose config > /tmp/cta-compose-rendered.yaml`
+  -> exit 0; rendered explicit telemetry/alert/retention/LLM settings and port 8000. The
+  placeholder was redacted from displayed verification output and no real key was accessed.
+- `docker build --tag cta-rail-telemetry:verified .` -> exit 0; image
+  `sha256:1340bffc8583fcc8b6afedb0feeda90ac6db74ddb9311f9aa7225ee0081be708`.
+- A fresh root-owned named volume `cta-rail-telemetry-root-volume` was mounted and the image
+  started with the offline `serve` command (so no CTA call occurred). In-container health was
+  `{"database":"ok","status":"ok","telemetry":{"error":null,"finished_at":null,"status":"never"}}`;
+  `/data` became uid/gid 10001 mode 0755; `/proc/1/status` reported all UIDs/GIDs 10001 and
+  an empty supplementary group list. The health containers were removed.
+- Image `Config.Cmd` was exactly `["python3","-m","cta_pipeline","live","--host",
+  "0.0.0.0","--port","8000"]`.
+- The fixture-driven concurrent smoke is
+  `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest
+  tests.test_telemetry.APIAndCLITests.test_http_and_fixture_poll_run_concurrently_and_shutdown_cleanly -v`;
+  exact result: 1 test passed in 0.520s (`OK`). It verified repeated polling, concurrent HTTP
+  health, separate alert cadence, and clean thread/server shutdown without network access.
+- `docker volume rm cta-rail-telemetry-root-volume` -> removed the disposable verification
+  volume; it contained test data only and is not recoverable.
+- `git diff --check` -> passed; no commit or push was performed.
+
+FINAL GREEN 2026-08-28 secret-audit regression:
+- Added an offline failed-fetch/malformed-cycle assertion proving the CTA key is absent from
+  the failure audit and that no telemetry snapshot/current-state rows are partially written.
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v &&
+  python3 -m compileall -q src tests && git diff --check`
+- Exact result: 44 tests passed in 3.368s (`OK`); compileall and diff whitespace checks passed;
+  exit status 0.
+
+RED 2026-08-28 independent-review regression slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_review_fixes -v`
+- Exact result: 5 tests ran in 2.111s; 4 failed, demonstrating missing stationary
+  streak migration, authoritative state reconciliation, expansion/storage bounds, and
+  anomaly deduplication/recurrence refresh. The two-second blocking-poller test passed
+  against the old ten-second join cap; shutdown is nevertheless made unconditional.
+
+GREEN 2026-08-28 independent-review regression slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_review_fixes -v`
+- Exact result: 5 tests ran in 1.161s and passed (`OK`).
+
+RED 2026-08-28 existing-snapshot migration slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_review_fixes.ReviewFixTests.test_stationary_streak_survives_short_poll_intervals_and_migrates_current_schema -v`
+- Exact result: 1 test ran in 0.012s and errored with `gzip.BadGzipFile`, proving a
+  database created by the current uncommitted schema retained uncompressed evidence.
+
+GREEN 2026-08-28 existing-snapshot migration slice:
+- The same focused command ran 1 test in 0.061s and passed (`OK`); a second migration
+  remained idempotent.
+
+FINAL GREEN 2026-08-28 independent-review verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> 49 tests ran in 4.516s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0.
+- `git diff --check` -> exit 0.
+- `CTA_API_KEY=offline-placeholder docker compose config` -> exit 0; rendered Compose
+  explicitly selects `python3 -m cta_pipeline live --host 0.0.0.0 --port 8000`.
+- Final `docker build -q -t cta-rail-review:final .` -> image
+  `sha256:a3ca786810de94e499732f10f9e9c9b09d6f640a219ba2367d2f08364aeed7e9`.
+- Image default command inspection -> `["python3","-m","cta_pipeline","serve","--host","0.0.0.0","--port","8000"]`.
+- A disposable named volume was made root-owned, then normal image startup repaired
+  `/data` to uid/gid 10001 mode 0755. `/api/health` returned database `ok`, PID 1 had
+  uid/gid 10001 with no supplementary groups, and the direct-run command was `serve`.
+- Fixture telemetry/API smoke command
+  `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_telemetry.APIAndCLITests.test_http_and_fixture_poll_run_concurrently_and_shutdown_cleanly -v`
+  -> 1 test ran in 0.520s and passed (`OK`).
+- The disposable container and named volume were removed; they contained test data only
+  and are not recoverable. No commit or push was performed.
+
+RED 2026-08-28 full-suite compatibility checkpoint:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+- Exact result: 49 tests ran in 4.052s; 47 passed and 2 failed. The failures were
+  obsolete expectations for three migration rows and preservation of model prose after
+  materially changed recurring context; both expectations were updated to the new honest
+  migration/current-deterministic contract without weakening coverage.
+
+RED 2026-08-28 final blocking-findings slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_final_findings -v`
+- Exact result: 5 tests ran in 0.042s and failed as expected (3 failures, 2 errors).
+  Snapshot retention left 0 rather than 2 replayable rows, prediction state retained 2
+  rotating keys rather than 1, inactive anomalies remained, and the required hard-cap
+  constants/behavior were absent.
+
+GREEN 2026-08-28 final blocking-findings slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_final_findings -v`
+- Exact result: 5 tests ran in 0.073s and passed (`OK`).
+
+FINAL GREEN 2026-08-28 final blocking-findings verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> 54 tests ran in 4.637s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0; `git diff --check` -> exit 0.
+- `CTA_API_KEY=offline-placeholder docker compose config >/tmp/cta-final-compose.yaml`
+  -> exit 0. The first chained `docker compose build` invocation then exited 15 because
+  the one-command placeholder scope intentionally did not carry to that second subprocess.
+- `CTA_API_KEY=offline-placeholder docker compose build` -> exit 0; image
+  `sha256:3ee390728e35e0a5db9be5dbef54299ce0cd9e12a2307589d9eade809bbc7125`.
+- A direct image start with root-owned named volume `cta-final-root-volume` returned
+  `{"database":"ok","status":"ok","telemetry":{"error":null,"finished_at":null,"status":"never"}}`.
+  `/data` became uid/gid 10001 mode 0755; PID 1 had uid/gid 10001 and no supplementary
+  groups. Direct `docker inspect .State.Health` is inapplicable because the healthcheck is
+  supplied by Compose, not baked into the image; the equivalent HTTP health probe passed.
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_review_fixes.ReviewFixTests.test_expansion_is_atomic_snapshots_replay_and_repeated_storage_is_bounded tests.test_telemetry.APIAndCLITests.test_telemetry_apis_bounds_health_and_dashboard_escaping -v`
+  -> 2 tests ran in 1.078s and passed (`OK`), covering gzip canonical replay and API smoke.
+
+RED 2026-08-28 duplicate GTFS-Realtime identity validation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_duplicate_identity -v`
+- Exact result: exit 1; 3 tests ran in 0.035s and failed with 4 assertion failures.
+  Duplicate FeedEntity IDs were accepted for both VehiclePositions and TripUpdates,
+  duplicate resolved vehicle IDs were accepted, and duplicate normalized prediction
+  identities were accepted.
+
+GREEN 2026-08-28 duplicate GTFS-Realtime identity validation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_duplicate_identity -v`
+- Exact result: exit 0; 3 tests ran in 0.027s and passed (`OK`). The slice also proved
+  distinct vehicle/entity IDs and a looping trip with the same stop ID at distinct stop
+  sequences remain valid, while malformed cycles preserve all telemetry data/state and
+  prior success, append only a redacted failed audit row, and leak neither key nor payload.
+
+COMPATIBILITY RED 2026-08-28 duplicate GTFS-Realtime identity validation:
+- First `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+- Exact result: exit 1; 57 tests ran in 3.750s with 1 failure and 1 error. Two legacy
+  fixtures constructed now-invalid duplicate identities: the anomaly-deduplication fixture
+  repeated a FeedEntity ID, and the expansion-bound fixture repeated one prediction key.
+  Their identities were made distinct without weakening their original assertions.
+
+FINAL GREEN 2026-08-28 duplicate GTFS-Realtime identity validation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; 57 tests ran in 4.628s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+- No commit or push was performed.

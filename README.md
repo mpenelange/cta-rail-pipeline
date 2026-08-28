@@ -1,6 +1,10 @@
 # CTA Rail Disruption Intelligence Pipeline
 
-A polished, local-first Python 3.13 MVP that fetches CTA rail alerts, preserves raw evidence, versions meaningful alert changes, extracts rider-facing intelligence, optionally enriches matched stations with ridership, and serves a compact dark dashboard and JSON API. It has no third-party runtime or test dependencies.
+A local-first, Python 3.13 stdlib-only pipeline for CTA alerts and GTFS-Realtime vehicle/prediction telemetry, with replayable SQLite history, deterministic anomaly signals, and a compact dashboard/API.
+
+The image defaults to the offline-useful `serve` command, so a direct `docker run` does
+not require `CTA_API_KEY`. Compose explicitly selects `live` and therefore requires the
+CTA key for polling.
 
 ## Quick start
 
@@ -19,6 +23,8 @@ To ingest the live feed and start the server:
 ```bash
 PYTHONPATH=src python3 -m cta_pipeline ingest --with-ridership
 PYTHONPATH=src python3 -m cta_pipeline run --host 127.0.0.1 --port 8000
+PYTHONPATH=src python3 -m cta_pipeline telemetry-ingest
+PYTHONPATH=src python3 -m cta_pipeline live --host 127.0.0.1 --port 8000
 ```
 
 ## Architecture
@@ -52,6 +58,8 @@ Socrata latest station rides ─────────────────
 | `demo` | Load two realistic offline alerts and station rides |
 | `serve [--host HOST --port PORT]` | Serve dashboard/API; defaults to `127.0.0.1:8000` |
 | `run [--with-ridership] [--host ... --port ...]` | Perform one ingestion, then serve |
+| `telemetry-ingest` | Fetch one VehiclePositions + TripUpdates cycle and emit a JSON summary |
+| `live [--host ... --port ...]` | Serve while polling telemetry every 30s and alerts every 300s |
 
 Commands print one machine-readable JSON result. Fetch failures print a concise JSON error to stderr, return nonzero, and record a failed ingestion run while preserving prior data.
 
@@ -67,6 +75,9 @@ Example demo output:
 - `GET /api/health` — database health (`{"status":"ok","database":"ok"}`).
 - `GET /api/alerts?line=Red&severity=Major&planned=true&q=Lake` — active alerts from the latest successful authoritative snapshot. Every filter is optional; the response includes ridership refresh metadata.
 - `GET /api/alerts/<id>` — alert detail by local numeric ID or CTA source ID; unknown IDs return 404.
+- `GET /api/telemetry` — bounded operations summary and actual GTFS-RT timestamps.
+- `GET /api/vehicles?limit=100` — current vehicle state (maximum 200).
+- `GET /api/anomalies?limit=100` — recent active deterministic anomalies (maximum 200).
 
 Responses include normalized agency facts, line colors, deterministic or model extraction provenance, confidence, exposure where a numeric station ID matches, and revision count. SQL values are parameterized. JSON uses the standard encoder and the dashboard escapes all API-derived content before inserting it into the document. A restrictive content-security policy and `nosniff` header are set.
 
@@ -75,11 +86,27 @@ Responses include normalized agency facts, line colors, deterministic or model e
 | Variable | Default | Meaning |
 |---|---|---|
 | `CTA_DB_PATH` | `./data/cta.db` | SQLite file path |
+| `CTA_API_KEY` | unset | Required for official CTA GTFS-Realtime feeds |
+| `CTA_TELEMETRY_INTERVAL` | `30` | Seconds between telemetry cycles in `live` |
+| `CTA_ALERTS_INTERVAL` | `300` | Seconds between alert cycles in `live` |
+| `CTA_RETENTION_HOURS` | `24` | Telemetry snapshot/observation retention |
+| `CTA_LLM_ANOMALIES` | `false` | Explain only newly fingerprinted deterministic anomalies |
+| `CTA_DASHBOARD_PORT` | `8000` | Compose host port; use `8001` for `8001:8000` |
 | `OPENAI_API_KEY` | unset | Enables optional model extraction when non-empty |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible API root |
 | `OPENAI_MODEL` | `gpt-5-mini` | Extraction model name |
 
 Copy `.env.example` as a reference; Python does not load `.env` files automatically. Export values in your shell or supply them through Compose.
+
+### Davit / Docker Desktop flow
+
+Keep your real `CTA_API_KEY` only in the sibling `.env` on your Mac. Never paste it into source, logs, commands, or the database. From the project directory, point Compose at that file explicitly (adjust the path if needed):
+
+```bash
+docker compose --env-file ../.env up --build
+```
+
+For a host port of 8001, set `CTA_DASHBOARD_PORT=8001` in that local env file, or run `CTA_DASHBOARD_PORT=8001 docker compose --env-file ../.env up --build`; the container still listens on `0.0.0.0:8000`. Compose passes `CTA_API_KEY` explicitly and refuses startup when it is absent.
 
 ## Data model
 
@@ -93,14 +120,32 @@ Copy `.env.example` as a reference; Python does not load `.env` files automatica
 | `extractions` | One structured extraction per immutable alert version |
 | `station_ridership` | Latest known station entry count for exposure context |
 | `ridership_refresh_state` | Latest cache service date, row count, completeness, and fetch timestamp |
+| `telemetry_runs`, `telemetry_snapshots` | Cycle audit and deduplicated gzip-compressed canonical JSON evidence (stdlib gzip; decompress to replay) |
+| `vehicle_state`, `vehicle_observations` | Latest state plus timestamped replay history |
+| `trip_prediction_observations` | Timestamped stop predictions and reported delays |
+| `anomalies` | Stable fingerprints, deterministic wording, active state, and explanation provenance |
 
 The snapshot hash identifies exact source bytes. Alert hashes use sorted, compact UTF-8 JSON after normalization; fetch timestamps and raw key ordering therefore do not create revisions. Alert rows point to a contiguous current version, while all prior normalized versions remain queryable.
+
+Telemetry persistence is bounded before writes: a cycle with more than 50,000 expanded
+stop predictions is rejected atomically (authoritative entity collections are never
+silently truncated). Canonical feeds are content-deduplicated and gzip-compressed while
+remaining directly replayable. Vehicle and prediction histories record material changes
+only; deduplicated snapshots are reassociated with the latest successful cycle. Latest
+vehicle and prediction state is authoritatively reconciled to each successful feed.
+Snapshots and inactive anomalies have time retention, independently of hard global
+ceilings: 20,000 telemetry snapshots, 100,000 telemetry runs, 100,000 vehicle
+observations, 100,000 trip observations, and 20,000 anomalies. A derived active-anomaly
+set over 20,000 is rejected atomically rather than truncated. Snapshot-referenced runs
+are exempt from run pruning, and failed cycles enforce the audit-run cap themselves.
 
 ## Extraction provenance, safety, and cost
 
 The local extractor is always available and derives summary, planned status, cause, effects, actions, lines/stations, accessibility impact, event type, and bounded confidence using deterministic rules. This is an aid for disruption triage, not an official service guarantee or trip planner.
 
 When `OPENAI_API_KEY` is present, the adapter requests JSON-schema output from the configured OpenAI-compatible endpoint. It validates/coerces only the documented shape; malformed JSON, wrong types, timeouts, rate limits, and provider failures fall back to local extraction without failing ingestion. The key is sent only in the `Authorization` header and is never persisted, logged, included in a model prompt, or returned by the API. Model method/name/confidence are stored with each result. Each changed alert can make one model request, so cost depends on alert churn and provider pricing; leave the key unset for zero model cost.
+
+GTFS-Realtime telemetry is structured data and is never sent wholesale to a model. Stale timestamps, reported material delays, unchanged vehicle coordinates across observations, and supported route/direction/stop arrival gaps are derived deterministically without claims of causation. If `CTA_LLM_ANOMALIES=true`, only a bounded summary/context for a newly created fingerprint is sent to the existing OpenAI-compatible endpoint. Strict JSON is required; every failure retains the deterministic text and records fallback provenance. CTA and OpenAI API keys are never included in prompts, exceptions, logs, snapshots, or database rows.
 
 Ridership is optional, cached, and failure-tolerant. Exposure is the sum of station-entry observations for the explicitly reported cache service date—not a live passenger count. Missing matches remain missing rather than being guessed, and partial refreshes are labeled.
 

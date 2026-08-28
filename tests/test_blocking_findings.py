@@ -133,7 +133,7 @@ class RevisionAndActivityTests(unittest.TestCase):
                 INSERT INTO extractions VALUES(1,1,'local','v1',0.5,'{}','old');
                 """)
             db.migrate(); db.migrate()
-            self.assertEqual(db.scalar("select count(*) from schema_migrations"), 2)
+            self.assertEqual(db.scalar("select count(*) from schema_migrations"), 4)
             with db.connect() as con:
                 cols = {r[1] for r in con.execute("pragma table_info(alerts)")}
             self.assertIn("is_active", cols)

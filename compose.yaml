@@ -1,13 +1,19 @@
 services:
   app:
     build: .
+    command: ["python3", "-m", "cta_pipeline", "live", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       CTA_DB_PATH: /data/cta.db
+      CTA_API_KEY: ${CTA_API_KEY:?Set CTA_API_KEY in your shell or Compose env file}
+      CTA_TELEMETRY_INTERVAL: ${CTA_TELEMETRY_INTERVAL:-30}
+      CTA_ALERTS_INTERVAL: ${CTA_ALERTS_INTERVAL:-300}
+      CTA_RETENTION_HOURS: ${CTA_RETENTION_HOURS:-24}
+      CTA_LLM_ANOMALIES: ${CTA_LLM_ANOMALIES:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
     ports:
-      - "8000:8000"
+      - "${CTA_DASHBOARD_PORT:-8000}:8000"
     volumes:
       - cta-data:/data
     restart: unless-stopped

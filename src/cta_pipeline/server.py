@@ -14,7 +14,37 @@ const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'
 let all=[]; const el=id=>document.getElementById(id);
 function render(){let q=el('q').value.toLowerCase(),line=el('line').value,sev=el('severity').value,plan=el('planned').value;let rows=all.filter(a=>(!line||a.lines.includes(line))&&(!sev||a.severity_label===sev)&&(!plan||String(a.extraction.planned)===plan)&&JSON.stringify(a).toLowerCase().includes(q));el('shown').textContent=rows.length;el('cards').innerHTML=rows.length?rows.map(a=>`<article class="card" style="border-left-color:${esc(a.line_colors[0]||'#718096')}"><div class="row"><span class="sev">${esc(a.severity_label)}</span>${a.lines.map((x,i)=>`<span class="linechip" style="background:${esc(a.line_colors[i])};color:${x==='Y'?'#111':'#fff'}">${esc(x)}</span>`).join('')}<span class="method">${esc(a.extraction.method)} · ${Math.round(a.extraction.confidence*100)}% · rev ${a.revision_count}</span></div><h2 class="headline">${esc(a.headline)}</h2><div class="summary">${esc(a.extraction.summary)}</div><div class="detail"><div><b>Cause & effect</b>${esc(a.extraction.cause)} · ${esc(a.extraction.effects)}</div><div><b>Recommended action</b>${esc(a.extraction.actions)}</div><div><b>Stations / exposure</b>${esc(a.stations.join(', ')||'Not specified')}${a.estimated_exposure!=null?' · ~'+a.estimated_exposure.toLocaleString()+' latest daily rides':''}</div></div><div class="meta" style="margin-top:10px">${esc(a.start_time||'Start not stated')} · ${esc(a.extraction.accessibility_impact)}</div></article>`).join(''):'<div class="empty">No disruptions match these filters.</div>'}
 fetch('/api/alerts').then(r=>r.json()).then(d=>{all=d.alerts;el('total').textContent=all.length;el('major').textContent=all.filter(x=>['Critical','Major'].includes(x.severity_label)).length;el('revisions').textContent=all.reduce((n,x)=>n+x.revision_count,0);[...new Set(all.flatMap(x=>x.lines))].sort().forEach(x=>el('line').insertAdjacentHTML('beforeend',`<option>${esc(x)}</option>`));render()}).catch(()=>el('cards').innerHTML='<div class="empty">Dashboard data is unavailable.</div>');document.querySelectorAll('input,select').forEach(x=>x.addEventListener('input',render));
+fetch('/api/telemetry').then(r=>r.json()).then(d=>{el('feedtime').textContent=esc(d.actual_telemetry_timestamp||'No successful cycle');el('vehicles').textContent=d.active_vehicles;el('delayed').textContent=d.delayed_trips;el('anomalycount').textContent=d.active_anomalies;el('routes').textContent=Object.entries(d.vehicles_by_route||{}).map(([k,v])=>`${esc(k)}: ${v}`).join(' · ')||'No vehicles reported'}).catch(()=>el('feedtime').textContent='Telemetry unavailable');
 """
+
+
+def _limit(query, default=100, maximum=200):
+    raw=query.get("limit",[str(default)])[0]
+    try: value=int(raw)
+    except ValueError: raise ValueError("invalid limit") from None
+    if value < 1 or value > maximum: raise ValueError(f"limit must be 1..{maximum}")
+    return value
+
+
+def query_telemetry(db):
+    with db.connect() as con:
+        run=con.execute("select * from telemetry_runs where status='success' order by id desc limit 1").fetchone()
+        routes={r[0] or "Unknown":r[1] for r in con.execute("select route_id,count(*) from vehicle_state group by route_id order by route_id")}
+        anomalies=con.execute("select count(*) from anomalies where active=1").fetchone()[0]
+        delayed=0
+        if run:
+            delayed=con.execute("select count(distinct trip_id) from trip_prediction_observations where run_id=? and delay>=?",(run["id"],300)).fetchone()[0]
+    return {"last_success":run["finished_at"] if run else None,"actual_telemetry_timestamp":max(run["vehicle_feed_timestamp"],run["trip_feed_timestamp"]) if run else None,"vehicle_feed_timestamp":run["vehicle_feed_timestamp"] if run else None,"trip_feed_timestamp":run["trip_feed_timestamp"] if run else None,"active_vehicles":sum(routes.values()),"vehicles_by_route":routes,"delayed_trips":delayed,"active_anomalies":anomalies}
+
+
+def query_vehicles(db, limit):
+    with db.connect() as con: rows=con.execute("select vehicle_id,route_id,direction_id,trip_id,latitude,longitude,stop_id,current_status,vehicle_timestamp,feed_timestamp,observed_at,label from vehicle_state order by observed_at desc,vehicle_id limit ?",(limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_anomalies(db, limit):
+    with db.connect() as con: rows=con.execute("select fingerprint,kind,severity,entity_key,deterministic_text,explanation_text,method,model,first_seen_at,last_seen_at from anomalies where active=1 order by last_seen_at desc,id desc limit ?",(limit,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def _severity(raw, major=False):
@@ -40,7 +70,7 @@ def query_alerts(db):
 
 
 def dashboard():
-    return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>CTA Rail Disruption Intelligence</title><style>{CSS}</style></head><body><header><div class="brand"><span>CTA</span> Rail Disruption Intelligence</div><div class="health">● Local pipeline</div></header><main class="wrap"><section class="kpis"><div class="kpi"><b id="total">—</b><span>Current alerts</span></div><div class="kpi"><b id="major">—</b><span>Major / critical</span></div><div class="kpi"><b id="shown">—</b><span>Matching filters</span></div><div class="kpi"><b id="revisions">—</b><span>Total revisions</span></div></section><section class="filters" aria-label="Alert filters"><input id="q" type="search" placeholder="Search alerts or stations" aria-label="Search"><select id="line" aria-label="Line"><option value="">All lines</option></select><select id="severity" aria-label="Severity"><option value="">All severity</option><option>Critical</option><option>Major</option><option>Minor</option><option>Advisory</option></select><select id="planned" aria-label="Planned status"><option value="">Planned + unplanned</option><option value="true">Planned</option><option value="false">Unplanned</option></select></section><section id="cards" class="alerts"><div class="empty">Loading current disruptions…</div></section></main><script>{JS}</script></body></html>'''.encode()
+    return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>CTA Rail Disruption Intelligence</title><style>{CSS}</style></head><body><header><div class="brand"><span>CTA</span> Rail Disruption Intelligence</div><div class="health">● Pipeline online</div></header><main class="wrap"><h2>Live operations</h2><section class="kpis"><div class="kpi"><b id="vehicles">—</b><span>Active vehicles</span><div id="routes" class="meta"></div></div><div class="kpi"><b id="delayed">—</b><span>Delayed trips</span></div><div class="kpi"><b id="anomalycount">—</b><span>Current anomalies</span></div><div class="kpi"><b id="feedtime">—</b><span>Actual feed timestamp</span></div></section><h2>Service alerts</h2><section class="kpis"><div class="kpi"><b id="total">—</b><span>Current alerts</span></div><div class="kpi"><b id="major">—</b><span>Major / critical</span></div><div class="kpi"><b id="shown">—</b><span>Matching filters</span></div><div class="kpi"><b id="revisions">—</b><span>Total revisions</span></div></section><section class="filters" aria-label="Alert filters"><input id="q" type="search" placeholder="Search alerts or stations" aria-label="Search"><select id="line" aria-label="Line"><option value="">All lines</option></select><select id="severity" aria-label="Severity"><option value="">All severity</option><option>Critical</option><option>Major</option><option>Minor</option><option>Advisory</option></select><select id="planned" aria-label="Planned status"><option value="">Planned + unplanned</option><option value="true">Planned</option><option value="false">Unplanned</option></select></section><section id="cards" class="alerts"><div class="empty">Loading current disruptions…</div></section></main><script>{JS}</script></body></html>'''.encode()
 
 
 def make_handler(db):
@@ -50,10 +80,22 @@ def make_handler(db):
             if isinstance(body, (dict,list)): body=json.dumps(body,ensure_ascii=False).encode()
             self.send_response(status); self.send_header("Content-Type",content_type); self.send_header("Content-Length",str(len(body))); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Security-Policy","default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'"); self.end_headers(); self.wfile.write(body)
         def do_GET(self):
-            path=urlparse(self.path).path
+            parsed=urlparse(self.path); path=parsed.path
+            if len(parsed.query)>MAX_API_QUERY: self.send(414,{"error":"query too long"}); return
             if path in ("/api/health","/api/health/"):
-                try: db.scalar("SELECT 1"); self.send(200,{"status":"ok","database":"ok"})
+                try:
+                    db.scalar("SELECT 1")
+                    with db.connect() as con: latest=con.execute("select finished_at,status,error from telemetry_runs order by id desc limit 1").fetchone()
+                    telemetry=dict(latest) if latest else {"finished_at":None,"status":"never","error":None}
+                    self.send(200,{"status":"ok","database":"ok","telemetry":telemetry})
                 except Exception: self.send(503,{"status":"degraded","database":"error"})
+            elif path in ("/api/telemetry","/api/telemetry/"): self.send(200,query_telemetry(db))
+            elif path in ("/api/vehicles","/api/vehicles/"):
+                try: limit=_limit(parse_qs(urlparse(self.path).query)); self.send(200,{"vehicles":query_vehicles(db,limit),"limit":limit})
+                except ValueError as exc: self.send(400,{"error":str(exc)})
+            elif path in ("/api/anomalies","/api/anomalies/"):
+                try: limit=_limit(parse_qs(urlparse(self.path).query)); self.send(200,{"anomalies":query_anomalies(db,limit),"limit":limit})
+                except ValueError as exc: self.send(400,{"error":str(exc)})
             elif path=="/api/alerts":
                 raw_query=urlparse(self.path).query
                 if len(raw_query)>MAX_API_QUERY: self.send(414,{"error":"query too long"}); return
