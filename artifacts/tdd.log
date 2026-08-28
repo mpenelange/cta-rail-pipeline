@@ -279,3 +279,127 @@ FINAL GREEN 2026-08-28 duplicate GTFS-Realtime identity validation:
 - `python3 -m compileall -q src tests` -> exit 0, no output.
 - `git diff --check` -> exit 0, no output.
 - No commit or push was performed.
+
+RED 2026-08-28 native macOS launcher slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher tests.test_run_native -v`
+- Exact result: exit 1; 5 tests were discovered and all errored. The Python test
+  module could not import the absent `cta_pipeline.native_launcher`, and all four shell
+  tests could not copy the absent top-level `run-native.sh`.
+
+GREEN 2026-08-28 native macOS launcher slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher tests.test_run_native -v`
+- Exact result: exit 0; 12 tests ran in 0.031s and passed (`OK`).
+
+RED 2026-08-28 native port redaction slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher.NativeLauncherTests.test_invalid_native_port_error_does_not_echo_its_value -v`
+- Exact result: exit 1; 1 test ran and errored because integer conversion leaked the
+  rejected environment value through a raw `ValueError`.
+
+GREEN 2026-08-28 native port redaction slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher.NativeLauncherTests.test_invalid_native_port_error_does_not_echo_its_value -v`
+- Exact result: exit 0; 1 test ran in 0.001s and passed (`OK`).
+
+FINAL GREEN 2026-08-28 native macOS launcher verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; 70 tests ran in 4.191s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0; the launcher is executable.
+- `git diff --check` -> exit 0, no output.
+- A temporary fake-`uv` copy at `/tmp/tmp.HxFFGsnuZr/repo` ran
+  `./run-native.sh --check` -> exit 0. It reported Python 3.13.5, the temporary repo and
+  repo-local `data/cta.db`, dashboard `http://127.0.0.1:8001`, OpenAI base URL
+  `http://127.0.0.1:8000/v1`, CTA key configured `yes`, and anomaly LLM `false`, without
+  printing the placeholder key. `test ! -e /root/apps/cta-rail-pipeline/.venv` passed, so
+  the smoke created no real repository venv.
+- No commit or push was performed.
+
+RED 2026-08-28 native URL validation/redaction slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher.NativeLauncherTests.test_openai_base_url_rejects_credentials_query_fragment_and_controls_without_echo -v`
+- Exact result: exit 1; 1 test ran with 6 subtest failures. Credentials, query data,
+  fragments, controls, a non-HTTP scheme, and a missing hostname were accepted and
+  printed by `--check`.
+
+GREEN 2026-08-28 native URL validation/redaction slice:
+- The same focused command exited 0; 1 test ran in 0.004s and passed (`OK`).
+
+RED 2026-08-28 anomaly boolean normalization/redaction slice:
+- The focused anomaly-boolean test exited 1; 1 test ran with 8 subtest failures.
+  Alternate dotenv booleans were not normalized and invalid/control-bearing values were
+  accepted and printed verbatim.
+
+GREEN 2026-08-28 anomaly boolean normalization/redaction slice:
+- The same focused test exited 0; 1 test ran in 0.005s and passed (`OK`).
+
+RED 2026-08-28 safe CLI port error slice:
+- The focused invalid CLI port test exited 1 with an error: argparse raised `SystemExit`
+  after formatting the hostile raw value into its diagnostic.
+
+GREEN 2026-08-28 safe CLI port error slice:
+- The same focused test exited 0; 1 test ran in 0.001s and passed (`OK`).
+
+RED 2026-08-28 local models redirect-refusal slice:
+- The focused HTTP-server test exited 1; the probe requested both `/v1/models` and the
+  redirect target, proving the stdlib default redirect behavior was active.
+
+GREEN 2026-08-28 local models redirect-refusal slice:
+- The focused redirect test plus the existing key-redaction probe test exited 0; 2 tests
+  ran in 0.516s and passed (`OK`).
+
+RED 2026-08-28 native host validation/precedence slice:
+- The focused host-class test exited 1 with 9 subtest failures. `CTA_NATIVE_HOST` was
+  ignored and path, URL, whitespace/control, and overlong hostile hosts were accepted and
+  printed.
+
+GREEN 2026-08-28 native host validation/precedence slice:
+- The same focused test exited 0; 1 test ran in 0.005s and passed (`OK`).
+
+RED 2026-08-28 dotenv read-error slice:
+- The focused test exited 1 with 3 errors. Directory, missing-race, and simulated
+  permission failures escaped as raw `OSError` subclasses with paths/details.
+
+GREEN 2026-08-28 dotenv read-error slice:
+- The same focused test exited 0; 1 test ran in 0.001s and passed (`OK`).
+
+RED 2026-08-28 portable symlink-resolution slice:
+- The focused relative/absolute symlink test exited 1. Both invocations treated the
+  symlink directory as the repository; the second also attempted an unnecessary clear.
+
+GREEN 2026-08-28 portable symlink-resolution slice:
+- The same focused test exited 0; 1 test ran in 0.017s and passed (`OK`).
+
+RED 2026-08-28 behavioral venv validation slice:
+- The focused system-symlink/version-spoof test exited 1. A current-version system Python
+  symlink was trusted from `--version`; the fake uv then exposed that `--clear` had never
+  been requested.
+
+GREEN 2026-08-28 behavioral venv validation slice:
+- The same focused test exited 0; 1 test with both system-symlink and version-spoof
+  subtests ran in 0.051s and passed (`OK`).
+
+RED 2026-08-28 post-create venv validation slice:
+- The focused invalid-uv-output test exited 1 because the launcher continued with exit 0
+  after uv produced an interpreter that failed the fixed validation protocol.
+
+GREEN 2026-08-28 post-create venv validation slice:
+- The same focused test exited 0; 1 test ran in 0.007s and passed (`OK`) with the exact
+  concise post-create failure diagnostic.
+
+GREEN 2026-08-28 native blocker focused-suite checkpoint:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher tests.test_run_native -v`
+- Exact result: exit 0; 22 tests ran in 0.651s and passed (`OK`).
+
+FINAL GREEN 2026-08-28 native independent-review blocker verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; 79 tests ran in 5.288s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0; the launcher remains executable.
+- `git diff --check` -> exit 0, no output.
+- A disposable fake-uv copy under `/tmp/tmp.uSezX3qZiI/repo with spaces` ran
+  `run-native.sh --check --host ::1 --port 8123 --openai-base-url http://localhost:9000/v1`
+  -> exit 0. It reported Python 3.13.5, bracketed IPv6 dashboard
+  `http://[::1]:8123`, the safe base URL, configured CTA key, and canonical anomaly
+  value `true`; it did not print the placeholder CTA key. The assertion that the real
+  repository had no `.venv` passed. The disposable smoke directory was deleted and is
+  not recoverable.
