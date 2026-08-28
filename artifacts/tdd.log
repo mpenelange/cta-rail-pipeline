@@ -72,3 +72,49 @@ GREEN 2026-08-27 malformed alert snapshot fix:
 - Malformed members, unusable IDs, and duplicate canonical source IDs now raise PayloadError;
   failed ingestion is audited without changing prior alert, version, activity, or snapshot state.
   An explicit empty Alert array remains a valid authoritative empty snapshot.
+
+RED 2026-08-28 Davit/Apple-container named-volume reproduction:
+- `docker build --tag cta-rail-volume-tdd:red .` -> exit 0; built baseline image
+  `sha256:c317cf5df979a9531d5d77591cc55b4b909cfb97188216c34d6ca5c2ebfa7412`.
+- A first fixed-name-volume attempt found a stale `cta.db`; the volume was explicitly removed
+  and recreated before the deterministic reproduction below.
+- `docker volume rm cta-rail-volume-tdd-root && docker volume create cta-rail-volume-tdd-root`
+  -> both commands printed `cta-rail-volume-tdd-root` and exited 0.
+- Baseline-image reproduction command (the root bootstrap and uid drop occur in one container
+  because this Docker engine reapplies image-user ownership when remounting a named volume):
+  `docker run --rm --user 0:0 --volume cta-rail-volume-tdd-root:/data --entrypoint python3 cta-rail-volume-tdd:red -c "import os; [os.unlink('/data/'+p) for p in os.listdir('/data')]; os.chown('/data',0,0); os.chmod('/data',0o755); s=os.stat('/data'); print(f'before-drop /data uid={s.st_uid} gid={s.st_gid} mode={s.st_mode & 0o777:o} entries={os.listdir(\"/data\")}'); os.setgroups([]); os.setgid(10001); os.setuid(10001); print(f'application uid={os.getuid()} gid={os.getgid()} groups={os.getgroups()}'); os.execvp('python3',['python3','-m','cta_pipeline','init-db'])"`
+- Exact result: `before-drop /data uid=0 gid=0 mode=755 entries=[]`, then
+  `application uid=10001 gid=10001 groups=[]`, then
+  `sqlite3.OperationalError: unable to open database file`; exit status 1.
+
+RED 2026-08-28 focused entrypoint contract:
+- `PYTHONPATH=src python3 -m unittest tests.test_container_entrypoint -v`
+- Exact result: import failed with `ImportError: cannot import name 'container_entrypoint'
+  from 'cta_pipeline'`; 1 test loader error, exit status 1.
+
+GREEN 2026-08-28 Davit/Apple-container named-volume regression:
+- `PYTHONPATH=src python3 -m unittest tests.test_container_entrypoint -v` -> 3 tests
+  passed: data-directory preparation, privilege-drop order, and unchanged argv exec.
+- `docker build --tag cta-rail-volume-tdd:green .` -> exit 0; built image
+  `sha256:9e7e84a8a5788f13fef68c1cf19b05a1ec5463fc593d7d139ce68bc2e2fef570`.
+- Recreated `cta-rail-volume-tdd-root`, then prepared it with the green image bypassing
+  its entrypoint: exact precondition was `/data uid=0 gid=0 mode=755 entries=[]`.
+- `docker run --rm --volume cta-rail-volume-tdd-root:/data cta-rail-volume-tdd:green python3 -m cta_pipeline init-db`
+  -> `{"database": "/data/cta.db", "status": "ready"}`, exit 0.
+- Root inspection after init -> `/data uid=10001 gid=10001 mode=755` and
+  `/data/cta.db uid=10001 gid=10001 mode=644`.
+
+FINAL GREEN 2026-08-28 verification:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> 33 tests passed in 2.240s.
+- `python3 -m compileall -q src tests` -> `compileall: passed`, exit 0.
+- Normal startup: `docker run --detach --name cta-rail-volume-tdd-health --volume
+  cta-rail-volume-tdd-root:/data cta-rail-volume-tdd:green` -> container
+  `c830f777658bbe861068a3583a2b034b77923739db0e3616bc3df30a00b0673f`.
+- In-container HTTP GET `/api/health` -> `{"status": "ok", "database": "ok"}`.
+- `/proc/1/status` -> all real/effective/saved/filesystem UIDs were 10001, all GIDs
+  were 10001, and `Groups:` was empty.
+- `/proc/1/cmdline` -> `python3 -m cta_pipeline serve --host 0.0.0.0 --port 8000`,
+  confirming the original CMD is the final exec'd PID 1.
+- Container log -> `{"database": "/data/cta.db", "host": "0.0.0.0", "port": 8000,
+  "status": "serving"}`. Health container was stopped and removed.
