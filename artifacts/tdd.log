@@ -893,3 +893,27 @@ GREEN 2026-08-29 Train Tracker singleton-object cardinality:
 - Exact result: exit 0; Ran 14 tests in 1.143s and passed (`OK`).
 - `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
 - Exact result: exit 0; Ran 135 tests in 21.492s and passed (`OK`).
+
+RED 2026-08-29 bounded Train Tracker diagnostic:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_diagnose_traintracker -v`
+- Exact result: exit 1; the test module could not import `scripts.diagnose_traintracker` because the requested tracked diagnostic did not exist.
+
+GREEN 2026-08-29 bounded Train Tracker diagnostic:
+- Same focused command after adding the fixed-request diagnostic, pure sanitized summarizer, response/key/route/member bounds, redirect blocking, and allowlisted failures.
+- Exact result: exit 0; Ran 5 tests in 0.003s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 Train Tracker diagnostic:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_diagnose_traintracker -v` -> exit 0; Ran 5 tests in 0.003s and passed (`OK`).
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v` -> exit 0; Ran 140 tests in 22.885s and passed (`OK`).
+- `python3 -m compileall -q src scripts tests` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+
+REVIEW RED 2026-08-29 fixed diagnostic failure vocabulary:
+- Independent adversarial injection of `DiagnosticFailure("SECRET_FAILURE_VALUE")` caused the supplied value to reach `error_type`; the five focused tests did not yet cover this internal-exception path.
+
+REVIEW GREEN 2026-08-29 fixed diagnostic failure vocabulary:
+- Added a closed `_FAILURE_TYPES` allowlist and adversarial regression asserting an unknown internal error value maps to `unexpected` without disclosure.
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_diagnose_traintracker -v` -> exit 0; Ran 5 tests in 0.003s and passed (`OK`).
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v` -> exit 0; Ran 140 tests in 22.426s and passed (`OK`).
+- `python3 -m compileall -q src scripts tests` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
