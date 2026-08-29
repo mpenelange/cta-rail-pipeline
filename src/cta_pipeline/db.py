@@ -87,6 +87,20 @@ class Database:
                     con.execute("UPDATE telemetry_snapshots SET canonical_json=? WHERE id=?",
                                 (gzip.compress(raw,compresslevel=9,mtime=0),row[0]))
             con.execute("INSERT OR IGNORE INTO schema_migrations VALUES(4, datetime('now'))")
+        with self.connect() as con:
+            state_columns = {row[1] for row in con.execute("PRAGMA table_info(vehicle_state)")}
+            if "is_delayed" not in state_columns:
+                con.execute("ALTER TABLE vehicle_state ADD COLUMN is_delayed INTEGER CHECK(is_delayed IN (0,1))")
+            observation_columns = {row[1] for row in con.execute("PRAGMA table_info(vehicle_observations)")}
+            if "is_delayed" not in observation_columns:
+                con.execute("ALTER TABLE vehicle_observations ADD COLUMN is_delayed INTEGER CHECK(is_delayed IN (0,1))")
+            con.execute("INSERT OR IGNORE INTO schema_migrations VALUES(5, datetime('now'))")
+        with self.connect() as con:
+            run_columns = {row[1] for row in con.execute("PRAGMA table_info(telemetry_runs)")}
+            if "source" not in run_columns:
+                # Historical telemetry was GTFS-Realtime before the Train Tracker fallback.
+                con.execute("ALTER TABLE telemetry_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'gtfs-realtime' CHECK(source IN ('traintracker','gtfs-realtime'))")
+            con.execute("INSERT OR IGNORE INTO schema_migrations VALUES(6, datetime('now'))")
     def scalar(self, sql, params=()):
         with self.connect() as con:
             row = con.execute(sql, params).fetchone()

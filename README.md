@@ -1,6 +1,6 @@
 # CTA Rail Disruption Intelligence Pipeline
 
-A local-first, Python 3.13 stdlib-only pipeline for CTA alerts and GTFS-Realtime vehicle/prediction telemetry, with replayable SQLite history, deterministic anomaly signals, and a compact dashboard/API.
+A local-first, Python 3.13 stdlib-only pipeline for CTA alerts and Train Tracker or GTFS-Realtime vehicle telemetry, with replayable SQLite history, deterministic anomaly signals, and a compact dashboard/API.
 
 The image defaults to the offline-useful `serve` command, so a direct `docker run` does
 not require `CTA_API_KEY`. Compose explicitly selects `live` and therefore requires the
@@ -82,7 +82,7 @@ Socrata latest station rides ─────────────────
 | `demo` | Load two realistic offline alerts and station rides |
 | `serve [--host HOST --port PORT]` | Serve dashboard/API; defaults to `127.0.0.1:8000` |
 | `run [--with-ridership] [--host ... --port ...]` | Perform one ingestion, then serve |
-| `telemetry-ingest` | Fetch one VehiclePositions + TripUpdates cycle and emit a JSON summary |
+| `telemetry-ingest` | Fetch one Train Tracker or GTFS-Realtime telemetry cycle and emit a JSON summary |
 | `live [--host ... --port ...]` | Serve while polling telemetry every 30s and alerts every 300s |
 
 Commands print one machine-readable JSON result. Fetch failures print a concise JSON error to stderr, return nonzero, and record a failed ingestion run while preserving prior data.
@@ -99,7 +99,7 @@ Example demo output:
 - `GET /api/health` — database health (`{"status":"ok","database":"ok"}`).
 - `GET /api/alerts?line=Red&severity=Major&planned=true&q=Lake` — active alerts from the latest successful authoritative snapshot. Every filter is optional; the response includes ridership refresh metadata.
 - `GET /api/alerts/<id>` — alert detail by local numeric ID or CTA source ID; unknown IDs return 404.
-- `GET /api/telemetry` — bounded operations summary and actual GTFS-RT timestamps.
+- `GET /api/telemetry` — bounded operations summary, active source, and actual source timestamps.
 - `GET /api/vehicles?limit=100` — current vehicle state (maximum 200).
 - `GET /api/anomalies?limit=100` — recent active deterministic anomalies (maximum 200).
 
@@ -110,7 +110,8 @@ Responses include normalized agency facts, line colors, deterministic or model e
 | Variable | Default | Meaning |
 |---|---|---|
 | `CTA_DB_PATH` | `./data/cta.db` | SQLite file path |
-| `CTA_API_KEY` | unset | Required for official CTA GTFS-Realtime feeds |
+| `CTA_API_KEY` | unset | Required Train Tracker key; also used by Customer Alerts |
+| `CTA_GTFS_API_KEY` | unset | Optional distinct CTA beta GTFS-Realtime key |
 | `CTA_TELEMETRY_INTERVAL` | `30` | Seconds between telemetry cycles in `live` |
 | `CTA_ALERTS_INTERVAL` | `300` | Seconds between alert cycles in `live` |
 | `CTA_RETENTION_HOURS` | `24` | Telemetry snapshot/observation retention |
@@ -169,7 +170,11 @@ The local extractor is always available and derives summary, planned status, cau
 
 When `OPENAI_API_KEY` is present, the adapter requests JSON-schema output from the configured OpenAI-compatible endpoint. It validates/coerces only the documented shape; malformed JSON, wrong types, timeouts, rate limits, and provider failures fall back to local extraction without failing ingestion. The key is sent only in the `Authorization` header and is never persisted, logged, included in a model prompt, or returned by the API. Model method/name/confidence are stored with each result. Each changed alert can make one model request, so cost depends on alert churn and provider pricing; leave the key unset for zero model cost.
 
-GTFS-Realtime telemetry is structured data and is never sent wholesale to a model. Stale timestamps, reported material delays, unchanged vehicle coordinates across observations, and supported route/direction/stop arrival gaps are derived deterministically without claims of causation. If `CTA_LLM_ANOMALIES=true`, only a bounded summary/context for a newly created fingerprint is sent to the existing OpenAI-compatible endpoint. Strict JSON is required; every failure retains the deterministic text and records fallback provenance. CTA and OpenAI API keys are never included in prompts, exceptions, logs, snapshots, or database rows.
+Telemetry source selection is deterministic. With a nonempty `CTA_GTFS_API_KEY`, the pipeline uses CTA beta GTFS-Realtime VehiclePositions and TripUpdates with that distinct key. Otherwise it makes one HTTPS Train Tracker Locations request per cycle for `red,blue,brn,g,org,p,pink,y`, transforms positions into the canonical internal vehicle feed, and supplies a replayable empty TripUpdates companion. Train Tracker mode preserves vehicle history, stationary and stale detection, and authoritative empty-feed reconciliation. Reported prediction delays and arrival-gap rules are GTFS-only; Train Tracker mode does not fabricate predictions. The dashboard and `/api/telemetry` expose the active source.
+
+CTA documents a default Train Tracker positions limit of 50,000 requests per day. One all-routes request every 30 seconds is 2,880 requests per day. `Pexp` is not a Train Tracker route code and is used only by Customer Alerts.
+
+Telemetry structured data is never sent wholesale to a model. If `CTA_LLM_ANOMALIES=true`, only a bounded summary/context for a newly created fingerprint is sent to the existing OpenAI-compatible endpoint. Strict JSON is required; every failure retains deterministic text and records fallback provenance. CTA and OpenAI API keys are never included in prompts, exceptions, logs, snapshots, or database rows.
 
 Ridership is optional, cached, and failure-tolerant. Exposure is the sum of station-entry observations for the explicitly reported cache service date—not a live passenger count. Missing matches remain missing rather than being guessed, and partial refreshes are labeled.
 

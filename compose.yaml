@@ -5,6 +5,7 @@ services:
     environment:
       CTA_DB_PATH: /data/cta.db
       CTA_API_KEY: ${CTA_API_KEY:?Set CTA_API_KEY in your shell or Compose env file}
+      CTA_GTFS_API_KEY: ${CTA_GTFS_API_KEY:-}
       CTA_TELEMETRY_INTERVAL: ${CTA_TELEMETRY_INTERVAL:-30}
       CTA_ALERTS_INTERVAL: ${CTA_ALERTS_INTERVAL:-300}
       CTA_RETENTION_HOURS: ${CTA_RETENTION_HOURS:-24}

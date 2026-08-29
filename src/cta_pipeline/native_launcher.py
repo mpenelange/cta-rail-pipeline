@@ -205,7 +205,7 @@ def check_openai_models(config):
         with opener.open(request, timeout=1.5) as response:
             response.read(1)
     except Exception:
-        print("warning: local OpenAI-compatible /models check failed; continuing with deterministic fallback", file=sys.stderr)
+        print("warning: local OpenAI-compatible /models health probe is unavailable; inference was not tested; continuing", file=sys.stderr)
 
 
 def _summary(config):
@@ -218,6 +218,8 @@ def _summary(config):
     print(f"Dashboard: http://{display_host}:{config.port}")
     print(f"OpenAI base URL: {config.openai_base_url}")
     print("CTA key configured: yes")
+    source = "gtfs-realtime" if config.environment.get("CTA_GTFS_API_KEY", "").strip() else "traintracker"
+    print(f"Telemetry source: {source}")
     print(f"Anomaly LLM: {anomaly}")
 
 

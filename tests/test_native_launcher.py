@@ -215,16 +215,18 @@ class NativeLauncherTests(unittest.TestCase):
     def test_check_is_redacted_and_does_not_exec(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = self.make_repo(directory)
-            (repo / ".env").write_text("CTA_API_KEY=super-secret\nOPENAI_API_KEY=model-secret\n", encoding="utf-8")
+            (repo / ".env").write_text("CTA_API_KEY=super-secret\nCTA_GTFS_API_KEY=gtfs-secret\nOPENAI_API_KEY=model-secret\n", encoding="utf-8")
             stdout = io.StringIO()
             with patch.object(native_launcher.os, "execve") as execve, contextlib.redirect_stdout(stdout):
                 result = native_launcher.main(["--check"], repo_root=repo, environ={})
         output = stdout.getvalue()
         self.assertEqual(result, 0)
         self.assertIn("CTA key configured: yes", output)
+        self.assertIn("Telemetry source: gtfs-realtime", output)
         self.assertIn("Dashboard: http://127.0.0.1:8001", output)
         self.assertNotIn("super-secret", output)
         self.assertNotIn("model-secret", output)
+        self.assertNotIn("gtfs-secret", output)
         execve.assert_not_called()
 
     def test_exec_uses_current_interpreter_exact_argv_and_pythonpath(self):
@@ -260,7 +262,8 @@ class NativeLauncherTests(unittest.TestCase):
         request = opener.open.call_args.args[0]
         self.assertEqual(request.full_url, "http://localhost:8000/v1/models")
         self.assertNotIn("Authorization", request.headers)
-        self.assertIn("warning: local OpenAI-compatible /models check failed; continuing", stderr.getvalue())
+        self.assertIn("health probe is unavailable; inference was not tested", stderr.getvalue())
+        self.assertNotIn("deterministic fallback", stderr.getvalue())
         self.assertNotIn("never-send-this", stderr.getvalue())
 
     def test_local_models_probe_refuses_redirects_and_never_sends_authorization(self):
@@ -298,7 +301,7 @@ class NativeLauncherTests(unittest.TestCase):
             server.server_close()
             thread.join()
         self.assertEqual(requests, [("/v1/models", None)])
-        self.assertIn("warning: local OpenAI-compatible /models check failed; continuing", stderr.getvalue())
+        self.assertIn("health probe is unavailable; inference was not tested", stderr.getvalue())
 
 
 if __name__ == "__main__":
