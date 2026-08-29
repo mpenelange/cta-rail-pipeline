@@ -185,7 +185,12 @@ def build_config(argv, repo, process_environment):
     host = _native_host(args.host or environment.get("CTA_NATIVE_HOST") or "127.0.0.1")
     db_value = args.db_path or environment.get("CTA_NATIVE_DB_PATH") or "data/cta.db"
     db_path = _path(db_value, repo).resolve()
-    base_url = _openai_url(args.openai_base_url or environment.get("OPENAI_NATIVE_BASE_URL") or "http://127.0.0.1:8000/v1")
+    base_url = _openai_url(
+        args.openai_base_url
+        or environment.get("OPENAI_NATIVE_BASE_URL")
+        or environment.get("OPENAI_BASE_URL")
+        or "http://127.0.0.1:8000/v1"
+    )
     environment["CTA_LLM_ANOMALIES"] = _dotenv_boolean(environment.get("CTA_LLM_ANOMALIES", "false"))
     environment["CTA_DB_PATH"] = str(db_path)
     environment["OPENAI_BASE_URL"] = base_url

@@ -873,3 +873,11 @@ FINAL GREEN 2026-08-29 independent arrivals review blockers:
 - `sh -n run-native.sh` -> exit 0, no output.
 - `test -x run-native.sh` -> exit 0, no output.
 - `git diff --check` -> exit 0, no output.
+
+RED 2026-08-29 native `.env` OpenAI URL regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher.NativeLauncherTests.test_check_honors_openai_base_url_from_dotenv -v`
+- Exact result: exit 1; one test failed because `.env` supplied `OPENAI_BASE_URL=https://llm.example.test/v1` but `--check` reported the hard-coded local fallback.
+
+GREEN 2026-08-29 native `.env` OpenAI URL regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher -v`
+- Exact result: exit 0; Ran 20 tests in 0.568s and passed (`OK`), including generic `.env`, process-over-file, native override, CLI override, and safe invalid-URL cases.

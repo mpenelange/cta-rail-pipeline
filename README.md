@@ -23,10 +23,13 @@ uses `uv` to create a repo-local Python 3.13 `.venv` on first run, reuses a comp
 venv, and safely recreates an incompatible one. The stdlib-only app installs no packages.
 
 Native configuration accepts `--env-file`, `--host`, `--port`, `--db-path`, and
-`--openai-base-url`. Persistent native defaults can instead use `CTA_NATIVE_HOST`,
-`CTA_NATIVE_PORT`, `CTA_NATIVE_DB_PATH`, and `OPENAI_NATIVE_BASE_URL`; these avoid
-inheriting Docker's database path. Existing process environment values override the env
-file. The native dotenv reader supports blank/comment lines, optional `export`, names
+`--openai-base-url`. Use `OPENAI_BASE_URL` as the normal OpenAI-compatible API setting.
+`OPENAI_NATIVE_BASE_URL` is an optional native-only override. URL precedence is the CLI
+flag, then `OPENAI_NATIVE_BASE_URL`, then `OPENAI_BASE_URL`, then the local fallback
+`http://127.0.0.1:8000/v1`. Persistent native defaults can use `CTA_NATIVE_HOST`,
+`CTA_NATIVE_PORT`, and `CTA_NATIVE_DB_PATH`; these avoid inheriting Docker's database
+path. Existing process environment values override the env file. The native dotenv
+reader supports blank/comment lines, optional `export`, names
 made from letters, digits, and underscores, and unquoted or matching single/double-quoted
 values. It does not perform shell expansion. `CTA_LLM_ANOMALIES` accepts
 `true`/`false`, `1`/`0`, `yes`/`no`, or `on`/`off` (case-insensitive). Docker remains

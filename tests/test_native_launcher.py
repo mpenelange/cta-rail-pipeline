@@ -63,6 +63,85 @@ class NativeLauncherTests(unittest.TestCase):
         (repo / "src" / "cta_pipeline").mkdir(parents=True)
         return repo
 
+    def test_check_honors_openai_base_url_from_dotenv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            (repo / ".env").write_text(
+                "CTA_API_KEY=key\nOPENAI_BASE_URL=https://llm.example.test/v1\n",
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                result = native_launcher.main(["--check"], repo_root=repo, environ={})
+        self.assertEqual(result, 0)
+        self.assertIn(
+            "OpenAI base URL: https://llm.example.test/v1", stdout.getvalue()
+        )
+
+    def test_process_openai_base_url_overrides_dotenv_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            (repo / ".env").write_text(
+                "CTA_API_KEY=file-key\nOPENAI_BASE_URL=https://file.example.test/v1\n",
+                encoding="utf-8",
+            )
+            config = native_launcher.build_config(
+                [], repo,
+                {"CTA_API_KEY": "process-key",
+                 "OPENAI_BASE_URL": "https://process.example.test/v1"},
+            )
+        self.assertEqual(config.openai_base_url, "https://process.example.test/v1")
+        self.assertEqual(
+            config.environment["OPENAI_BASE_URL"],
+            "https://process.example.test/v1",
+        )
+
+    def test_native_openai_base_url_overrides_generic_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            config = native_launcher.build_config(
+                [], repo,
+                {"CTA_API_KEY": "key",
+                 "OPENAI_BASE_URL": "https://generic.example.test/v1",
+                 "OPENAI_NATIVE_BASE_URL": "https://native.example.test/v1"},
+            )
+        self.assertEqual(config.openai_base_url, "https://native.example.test/v1")
+        self.assertEqual(
+            config.environment["OPENAI_BASE_URL"],
+            "https://native.example.test/v1",
+        )
+
+    def test_cli_openai_base_url_overrides_native_and_generic_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            config = native_launcher.build_config(
+                ["--openai-base-url", "https://cli.example.test/v1"], repo,
+                {"CTA_API_KEY": "key",
+                 "OPENAI_BASE_URL": "https://generic.example.test/v1",
+                 "OPENAI_NATIVE_BASE_URL": "https://native.example.test/v1"},
+            )
+        self.assertEqual(config.openai_base_url, "https://cli.example.test/v1")
+        self.assertEqual(
+            config.environment["OPENAI_BASE_URL"], "https://cli.example.test/v1"
+        )
+
+    def test_invalid_openai_base_url_from_dotenv_is_rejected_without_echo(self):
+        hostile = "https://user:hostile-secret@example.test/v1"
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            (repo / ".env").write_text(
+                f"CTA_API_KEY=key\nOPENAI_BASE_URL={hostile}\n", encoding="utf-8"
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = native_launcher.main(
+                    ["--check"], repo_root=repo, environ={}
+                )
+        self.assertEqual(result, 2)
+        self.assertEqual(stderr.getvalue(), "error: invalid OpenAI base URL\n")
+        self.assertNotIn(hostile, stderr.getvalue())
+        self.assertNotIn("hostile-secret", stderr.getvalue())
+
     def test_environment_precedence_and_native_defaults_override_container_path(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = self.make_repo(directory)
