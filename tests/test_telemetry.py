@@ -100,7 +100,7 @@ class PersistenceAnomalyTests(unittest.TestCase):
         self.assertEqual(self.db.scalar("select count(*) from vehicle_state"), 1)
         self.assertEqual(self.db.scalar("select count(*) from vehicle_observations"), 1)
         self.assertEqual(self.db.scalar("select count(*) from trip_prediction_observations"), 1)
-        self.assertEqual(self.db.scalar("select count(*) from schema_migrations"), 4)
+        self.assertEqual(self.db.scalar("select count(*) from schema_migrations"), 6)
 
     def test_retention_prunes_old_history_but_keeps_current(self):
         with self.db.connect() as con:
