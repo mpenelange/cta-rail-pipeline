@@ -102,10 +102,24 @@ Example demo output:
 - `GET /api/telemetry` — bounded operations summary, active source, and actual source timestamps.
 - `GET /api/vehicles?limit=100` — current vehicle state (maximum 200).
 - `GET /api/anomalies?limit=100` — recent active deterministic anomalies (maximum 200).
-- `POST /api/ask` — ask the configured local OpenAI-compatible model a question (JSON
-  body `{"question":"..."}`, maximum 1,000 characters) about current CTA status.
+- `POST /api/ask` — ask the configured OpenAI-compatible model about current CTA status
+  or live station arrivals (JSON body `{"question":"..."}`, maximum 1,000 characters).
 
-Question answers use a fresh, current bounded SQLite snapshot containing the latest
+The question flow is deliberately **plan → validate → retrieve → answer**. A first,
+strict-JSON model call sees only the bounded question and bundled authoritative catalog
+of all 143 CTA rail parent stations. The checked-in catalog is pinned to exact CTA source
+metadata and its canonical-file SHA-256; when regenerating it from the official GTFS,
+update the documented constants beside `CATALOG_SHA256` only after reviewing the new
+source and content. Application code accepts only `none`, `clarify`, or one catalog map
+ID, then independently matches station-family and branch evidence in the question; it
+never executes model-provided URLs, parameters, tool names, or commands. A status question continues with no arrivals request. An ambiguous request
+such as “Western Blue Line” asks whether the rider means the O'Hare or Forest Park
+branch and uses no CTA quota. An explicit branch selects its catalog station, makes
+exactly one `ttarrivals` request, and supplies the validated result to the final answer
+call separately from the status snapshot. The response labels the lookup type, station,
+and CTA as-of time.
+
+Question answers also use a fresh, current bounded SQLite snapshot containing the latest
 successful telemetry timestamps/source, current route counts, delayed Train Tracker
 vehicles, active anomalies, and active alerts with structured facts. Snapshot metadata
 reports true totals plus returned, omitted, and malformed-alert counts, so capped lists
@@ -113,9 +127,22 @@ are not presented as complete. The UTF-8 context bytes, item text, provider requ
 response reads, and answers are capped; raw payloads, credentials, and arbitrary history
 are excluded. Provider redirects are rejected. The model is instructed to report unsupported or stale
 information instead of inventing causes, ETAs, predictions, or disruptions. In
-Train Tracker mode the position feed does not provide GTFS predictions, so the question
-box cannot infer them. Missing model configuration returns 503; provider failures return
+Train Tracker mode the position feed does not provide GTFS predictions; station ETAs
+come only from the separate Train Tracker Arrivals endpoint and are never inferred from
+positions. Missing model configuration returns 503; provider failures return
 a safe 502/504-style response without a fabricated fallback answer.
+
+Train Tracker arrivals are a short operational prediction horizon, not a timetable or
+trip planner. Predictions may change or disappear, scheduled predictions are identified
+separately from live ones, and an empty result does not prove that service has ended.
+The parser permits at most four hours into the future and a two-minute past grace only
+for approaching trains; generation timestamps must be within ten minutes of the CTA
+as-of time and cannot follow arrival. Chicago wall times are resolved jointly to UTC
+instants, with nonexistent and unresolved ambiguous times rejected. Predictions are
+ordered by resolved arrival instant before bounded context trimming. Unknown CTA fields
+are intentionally ignored; only the strict allowlist is validated and reaches model context.
+CTA keys have agency-defined quotas: the dashboard consumes one arrivals request only
+when the validated plan is `arrivals`, never for `none` or `clarify`.
 
 Responses include normalized agency facts, line colors, deterministic or model extraction provenance, confidence, exposure where a numeric station ID matches, and revision count. SQL values are parameterized. JSON uses the standard encoder and the dashboard escapes all API-derived content before inserting it into the document. A restrictive content-security policy and `nosniff` header are set.
 
@@ -214,6 +241,8 @@ The container initializes and serves the mounted `/data/cta.db`. Run `docker com
 ## Sources and terms caveat
 
 - [CTA Customer Alerts API](https://www.transitchicago.com/developers/alerts/)
+- [CTA Train Tracker API](https://www.transitchicago.com/developers/traintracker/)
+- [CTA Google Transit schedule data](https://www.transitchicago.com/downloads/sch_data/google_transit.zip)
 - [CTA alerts JSON endpoint](https://lapi.transitchicago.com/api/1.0/alerts.aspx?outputType=JSON&routeid=Red,Blue,Brn,G,Org,P,Pexp,Pink,Y)
 - [Chicago Data Portal: CTA L Station Entries](https://data.cityofchicago.org/Transportation/CTA-Ridership-L-Station-Entries-Daily-Totals/5neh-572f)
 - [Chicago Data Portal terms of use](https://www.chicago.gov/city/en/narr/foia/data_disclaimer.html)

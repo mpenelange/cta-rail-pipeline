@@ -685,3 +685,191 @@ FINAL GREEN 2026-08-29 canonical Content-Length leading-zero fix:
 - `sh -n run-native.sh` -> exit 0, no output.
 - `test -x run-native.sh` -> exit 0, no output.
 - `git diff --check` -> exit 0, no output.
+RED 2026-08-29 complete bundled CTA parent-station catalog:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_bundled_catalog_has_every_gtfs_parent_and_both_western_blue_stations -v`
+- Exact result: exit 1; Ran 1 test and errored because `cta_pipeline.arrivals` did not exist.
+
+GREEN 2026-08-29 complete bundled CTA parent-station catalog:
+- Same focused catalog command after generating the deterministic JSON from `/tmp/cta-google-transit.zip` and adding strict pathlib loading.
+- Exact result: exit 0; Ran 1 test in 0.001s and passed (`OK`).
+
+RED 2026-08-29 bounded strict planner `none` operation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_planner_sends_bounded_untrusted_catalog_and_accepts_strict_none -v`
+- Exact result: exit 1; Ran 1 test and errored because `plan_lookup` did not exist.
+
+GREEN 2026-08-29 bounded strict planner `none` operation:
+- Same focused planner command after adding the bounded OpenAI-compatible request and exact operation schema validation.
+- Exact result: exit 0; Ran 1 test in 0.002s and passed (`OK`).
+
+RED 2026-08-29 fixed Train Tracker arrivals request and canonical live prediction:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_arrivals_client_builds_fixed_query_and_returns_canonical_live_prediction -v`
+- Exact result: exit 1; Ran 1 test and errored because `TrainTrackerArrivalsClient` did not exist.
+
+GREEN 2026-08-29 fixed Train Tracker arrivals request and canonical live prediction:
+- Same focused client command after adding fixed HTTPS request construction, a 15-second timeout, 1 MiB cap, and canonical parsing.
+- Exact result: exit 0; Ran 1 test in 0.004s and passed (`OK`).
+
+RED 2026-08-29 empty results and optional CTA position fields:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_arrivals_parser_accepts_empty_eta_and_optional_authoritative_fields -v`
+- Exact result: exit 1; Ran 1 test in 0.003s and errored because missing optional latitude/longitude/heading fields were rejected.
+
+GREEN 2026-08-29 empty results and optional CTA position fields:
+- Same focused parser command after making supported position fields optional but validating paired coordinates when present.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`).
+
+RED 2026-08-29 ambiguous Western clarification short-circuit:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_ambiguous_western_arrival_question_returns_clarification_without_cta_or_final_call -v`
+- Exact result: exit 1; Ran 1 test in 0.510s and errored because the server had no injectable planner/CTA/final-answer flow.
+
+GREEN 2026-08-29 ambiguous Western clarification short-circuit:
+- Same focused endpoint command after adding planner dispatch and the direct clarification response.
+- Exact result: exit 0; Ran 1 test in 1.011s and passed (`OK`) with zero CTA/final calls.
+
+GREEN 2026-08-29 explicit O'Hare branch retrieval integration:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_explicit_ohare_branch_fetches_once_and_grounds_final_answer_with_metadata -v`
+- Exact result: exit 0; Ran 1 test in 1.011s and passed (`OK`); it verifies 40670, one CTA call, separated evidence, and response metadata.
+
+RED 2026-08-29 existing ask suite after mandatory planner integration:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask -v`
+- Exact result: exit 1; Ran 16 tests in 11.980s with one expected failure because the legacy fake provider returned a final answer to the new first planner call.
+- Test fixture corrected to return strict `none` JSON on call one and the legacy grounded answer on call two.
+
+RED 2026-08-29 final evidence UTF-8 cap and omission disclosure:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_final_context_utf8_cap_trims_predictions_and_discloses_true_omissions -v`
+- Exact result: exit 1; Ran 1 test and errored because `build_final_context` did not exist.
+
+GREEN 2026-08-29 final evidence UTF-8 cap and omission disclosure:
+- Same focused context command after adding whole-prediction trimming and true returned/omitted counts.
+- Exact result: exit 0; Ran 1 test in 0.510s and passed (`OK`).
+
+GREEN 2026-08-29 arrivals/catalog/planner validation suite:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals -v`
+- Exact result: exit 0; Ran 8 tests in 0.016s and passed (`OK`), covering complete/malformed catalogs, strict plans, valid/empty/error/malformed/oversized/control/DST/coordinate/duplicate CTA documents.
+
+RED 2026-08-29 question-box planning and lookup metadata status:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_dashboard_has_accessible_compact_question_panel_and_safe_rendering -v`
+- Exact result: exit 1; Ran 1 test in 0.510s and failed because the UI still displayed the legacy one-stage model status.
+
+GREEN 2026-08-29 question-box planning and lookup metadata status:
+- Same focused dashboard command after showing planning, clarification/no-quota, snapshot, and live CTA metadata states via `textContent`.
+- Exact result: exit 0; Ran 1 test in 0.510s and passed (`OK`).
+
+GREEN 2026-08-29 OpenAI and CTA redirect credential isolation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_openai_and_cta_redirects_never_forward_credentials -v`
+- Exact result: exit 0; Ran 1 test in 1.004s and passed (`OK`); neither redirect sink received a request.
+
+GREEN 2026-08-29 safe arrivals error semantics:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_arrivals_missing_key_timeout_and_provider_failure_have_safe_http_errors -v`
+- Exact result: exit 0; Ran 1 test in 2.011s and passed (`OK`) for safe 503/504/502 responses without provider details.
+
+RED 2026-08-29 authoritative five-digit CTA IDs:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_parser_requires_five_digit_station_and_stop_ids -v`
+- Exact result: exit 1; Ran 1 test in 0.003s and failed because a one-digit stop ID was accepted.
+
+GREEN 2026-08-29 authoritative five-digit CTA IDs:
+- Same focused parser command after separating five-digit CTA station/stop IDs from bounded run numbers.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`).
+
+RED 2026-08-29 live lookup architecture/quota/limitations documentation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_readme_documents_question_endpoint_and_snapshot_limits -v`
+- Exact result: exit 1; Ran 1 test in 0.509s and failed because the README lacked the plan/validation flow, Western ambiguity, request quota, and prediction-horizon documentation.
+
+GREEN 2026-08-29 live lookup architecture/quota/limitations documentation:
+- Same focused README command after documenting the full flow and limitations.
+- Exact result: exit 0; Ran 1 test in 0.510s and passed (`OK`).
+
+GREEN 2026-08-29 ask feature regression suite:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask -v`
+- Exact result: exit 0; Ran 18 tests in 14.471s and passed (`OK`).
+
+GREEN 2026-08-29 first complete live-arrivals regression run:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+- Exact result: exit 0; Ran 119 tests in 22.058s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 LLM-planned CTA station-arrival lookup:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; Ran 119 tests in 22.106s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+
+RED 2026-08-29 application-side ambiguous station-family validation:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_ambiguous_western_overrides_malicious_arrivals_plan_without_cta_or_final_call -v`
+- Exact result: exit 1; Ran 1 test in 1.011s; failed because the malicious arrivals plan reached the CTA path and the endpoint returned 503 instead of a deterministic clarification.
+
+GREEN 2026-08-29 application-side ambiguous station-family validation:
+- Same focused command after deriving candidates from the authoritative catalog and question.
+- Exact result: exit 0; Ran 1 test in 1.009s and passed (`OK`) with zero CTA/final-answer calls.
+
+RED 2026-08-29 uniquely identified station contradicts planner selection:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_explicit_forest_park_overrides_wrong_station_plan_without_external_calls -v`
+- Exact result: exit 1; Ran 1 test in 1.010s; the endpoint safely clarified but did not yet return the deterministic uniquely identified Forest Park correction.
+
+GREEN 2026-08-29 uniquely identified station contradicts planner selection:
+- Same focused command after adding the deterministic unique-candidate clarification.
+- Exact result: exit 0; Ran 1 test in 1.010s and passed (`OK`) with zero CTA/final-answer calls.
+
+RED 2026-08-29 fall-back UTC interval arithmetic:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_fall_back_interval_uses_consistent_utc_instants_across_folds -v`
+- Exact initial result: exit 1; Ran 1 test in 0.003s; old local-wall subtraction returned 3,720 seconds. The requested 10,920-second expectation was corrected to 7,320 because 2026-11-01 00:59 CDT is 05:59 UTC and 02:01 CST is 08:01 UTC; 10,920 would add a nonexistent second fallback hour.
+
+GREEN 2026-08-29 fall-back UTC interval arithmetic:
+- Same focused command after resolving Chicago times to instants and subtracting in UTC.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`) with the timezone-correct 7,320 seconds.
+
+RED 2026-08-29 operational prediction horizon and relationships:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_prediction_times_obey_operational_horizon_and_generation_relationships -v`
+- Exact result: exit 1; Ran 1 test in 0.004s with 4 failures: the 2099 arrival, generation-after-arrival, stale generation, and too-old arrival were all accepted.
+
+GREEN 2026-08-29 operational prediction horizon and relationships:
+- Same focused command after adding explicit four-hour future, two-minute approaching grace, ten-minute generation-skew, and generation-before-arrival checks.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`).
+
+RED 2026-08-29 deterministic resolved-arrival ordering:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_predictions_are_sorted_by_resolved_arrival_with_stable_tie_breakers -v`
+- Exact result: exit 1; Ran 1 test in 0.003s; returned run order was `300, 200, 100` instead of `100, 200, 300`.
+
+GREEN 2026-08-29 deterministic resolved-arrival ordering:
+- Same focused command after sorting by UTC arrival instant and stable run/stop/destination/direction tie breakers.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`).
+
+RED 2026-08-29 authoritative catalog content pin:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_catalog_rejects_well_shaped_143_row_content_replacement -v`
+- Exact result: exit 1; Ran 1 test in 0.003s; a well-shaped 143-row replacement with a changed station name was accepted.
+
+GREEN 2026-08-29 authoritative catalog content pin:
+- Same focused command after enforcing exact CTA source metadata and canonical-byte SHA-256.
+- Exact result: exit 0; Ran 1 test in 0.002s and passed (`OK`).
+
+RED 2026-08-29 relationship-resolved fall-back fold:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_fall_back_fold_is_resolved_only_when_relationships_select_one_instant -v`
+- Exact result: exit 1; Ran 1 test in 0.003s; parser errored by rejecting the ambiguous root before considering prediction relationships.
+
+GREEN 2026-08-29 relationship-resolved fall-back fold:
+- Same focused command after jointly evaluating root, generation, and arrival UTC candidates.
+- Exact result: exit 0; Ran 1 test in 0.003s and passed (`OK`), selecting CDT root/generation and CST arrival.
+
+RED 2026-08-29 unresolved fall fold rejection:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_parser_rejects_nonexistent_spring_time_and_unresolved_fall_fold -v`
+- Exact result: exit 1; Ran 1 test with one failed subtest because a fall-fold document with multiple viable instant combinations was accepted.
+
+GREEN 2026-08-29 nonexistent/unresolved local-time rejection:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_parser_rejects_nonexistent_spring_time_and_unresolved_fall_fold tests.test_arrivals.StationCatalogTests.test_fall_back_fold_is_resolved_only_when_relationships_select_one_instant -v`
+- Exact result: exit 0; Ran 2 tests in 0.003s and passed (`OK`).
+
+GREEN 2026-08-29 explicit non-finite coordinate regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals.StationCatalogTests.test_parser_rejects_non_finite_coordinates -v`
+- Exact pre-change result: exit 0; Ran 1 test in 0.003s and passed (`OK`): existing range comparisons already rejected NaN/Inf. The implementation now also uses explicit `math.isfinite` checks so the invariant is direct and reviewable.
+
+GREEN 2026-08-29 arrivals and ask focused regression suites:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_arrivals tests.test_ask -v`
+- Exact result: exit 0; Ran 37 tests in 16.353s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 independent arrivals review blockers:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; Ran 128 tests in 22.403s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.

@@ -10,7 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cta_pipeline.db import Database
-from cta_pipeline.server import AskProviderError, ask_model, build_current_status, make_server
+from cta_pipeline.arrivals import ArrivalsError, ArrivalsTimeout
+from cta_pipeline.server import AskProviderError, ask_model, build_current_status, build_final_context, make_server
 
 
 class AskEndpointTests(unittest.TestCase):
@@ -143,15 +144,16 @@ class AskEndpointTests(unittest.TestCase):
             con.execute("insert into extractions(alert_version_id,method,model,confidence,extraction_json,created_at) values(?,?,?,?,?,?)",
                         (version_id,"local","deterministic-v1",.8,json.dumps(extraction),"b"))
 
-        captured={}
+        captured={"bodies":[]}
         answer="<img src=x onerror=alert(1)> Red Line is delayed."
         class Provider(BaseHTTPRequestHandler):
             def log_message(self, *_args): pass
             def do_POST(self):
                 length=int(self.headers["Content-Length"])
                 captured["authorization"]=self.headers.get("Authorization")
-                captured["body"]=self.rfile.read(length)
-                raw=json.dumps({"choices":[{"message":{"content":answer}}]}).encode()
+                body=self.rfile.read(length); captured["bodies"].append(body)
+                content=json.dumps({"operation":"none"}) if len(captured["bodies"]) == 1 else answer
+                raw=json.dumps({"choices":[{"message":{"content":content}}]}).encode()
                 self.send_response(200); self.send_header("Content-Length",str(len(raw)))
                 self.send_header("Content-Type","application/json"); self.end_headers(); self.wfile.write(raw)
         upstream=ThreadingHTTPServer(("127.0.0.1",0),Provider)
@@ -164,8 +166,9 @@ class AskEndpointTests(unittest.TestCase):
         self.assertEqual(status,200); self.assertEqual(result["answer"],answer)
         self.assertEqual(result["as_of"],200); self.assertEqual(result["source"],"traintracker")
         self.assertEqual(captured["authorization"],"Bearer super-secret-key")
-        self.assertNotIn(b"super-secret-key",captured["body"])
-        payload=json.loads(captured["body"]); messages=payload["messages"]
+        self.assertEqual(len(captured["bodies"]),2)
+        self.assertNotIn(b"super-secret-key",b"".join(captured["bodies"]))
+        payload=json.loads(captured["bodies"][1]); messages=payload["messages"]
         self.assertEqual(payload["model"],"local-model")
         self.assertIn("untrusted data",messages[0]["content"])
         self.assertIn("no GTFS prediction stream",messages[1]["content"])
@@ -249,6 +252,10 @@ class AskEndpointTests(unittest.TestCase):
         self.assertIn("askAnswer.textContent",page)
         self.assertIn("event.key==='Enter'",page)
         self.assertIn("askButton.disabled=true",page)
+        self.assertIn("Planning live CTA lookup",page)
+        self.assertIn("data.lookup_type",page)
+        self.assertIn("askStatus.textContent",page)
+        self.assertNotIn("askAnswer.innerHTML",page)
 
     def test_snapshot_total_bound_preserves_valid_deterministic_json(self):
         with self.db.connect() as con:
@@ -351,6 +358,114 @@ class AskEndpointTests(unittest.TestCase):
         self.assertIn("POST /api/ask",readme)
         self.assertIn("current bounded SQLite snapshot",readme)
         self.assertIn("does not provide GTFS predictions",readme)
+        self.assertIn("plan → validate → retrieve → answer",readme)
+        self.assertIn("Western Blue Line",readme)
+        self.assertIn("one `ttarrivals` request",readme)
+        self.assertIn("prediction horizon",readme)
+
+    def test_ambiguous_western_overrides_malicious_arrivals_plan_without_cta_or_final_call(self):
+        calls={"cta":0, "final":0}
+        class CTA:
+            def fetch(self, *_args): calls["cta"] += 1
+        def planner(question, catalog):
+            self.assertIn("Western Blue Line", question)
+            return {"operation":"arrivals", "station_id":"40670"}
+        def final(*_args): calls["final"] += 1
+        server=make_server(self.db, 0, planner=planner, arrivals_client=CTA(), answerer=final)
+        thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+        body=json.dumps({"question":"When is the next train arriving into Western Blue Line?"}).encode()
+        connection.request("POST","/api/ask",body=body,headers={"Content-Type":"application/json"})
+        response=connection.getresponse(); result=json.loads(response.read()); connection.close()
+        self.assertEqual(response.status,200)
+        self.assertIn("Western",result["answer"])
+        self.assertIn("O'Hare",result["answer"])
+        self.assertIn("Forest Park",result["answer"])
+        self.assertEqual(result["lookup_type"],"clarification")
+        self.assertEqual(calls,{"cta":0,"final":0})
+
+    def test_explicit_ohare_branch_fetches_once_and_grounds_final_answer_with_metadata(self):
+        calls=[]; captured={}
+        class CTA:
+            def fetch(self, station_id, station_name):
+                calls.append((station_id,station_name))
+                return {"station":{"map_id":station_id,"name":station_name},"as_of":"2026-08-29T12:00:00-05:00",
+                        "predictions":[{"destNm":"O'Hare","arrT":"2026-08-29T12:04:30-05:00","wait_seconds":270,"wait_minutes":5,"live":True,"scheduled":False,"delayed":False,"approaching":False}],
+                        "prediction_counts":{"total":1,"returned":1,"omitted":0}}
+        def planner(_question, _catalog): return {"operation":"arrivals","station_id":"40670"}
+        def final(question, context): captured.update(question=question,context=json.loads(context)); return "An O'Hare train is due in about 5 minutes."
+        server=make_server(self.db,0,planner=planner,arrivals_client=CTA(),answerer=final)
+        thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+        body=json.dumps({"question":"Next train at Western Blue Line O'Hare branch?"}).encode()
+        connection.request("POST","/api/ask",body=body,headers={"Content-Type":"application/json"})
+        response=connection.getresponse(); result=json.loads(response.read()); connection.close()
+        self.assertEqual(response.status,200)
+        self.assertEqual(calls,[("40670","Western (Blue - O'Hare Branch)")])
+        self.assertIn("current_status_snapshot",captured["context"])
+        self.assertEqual(captured["context"]["authoritative_lookup"]["predictions"][0]["wait_seconds"],270)
+        self.assertEqual(result["lookup_type"],"arrivals")
+        self.assertEqual((result["station_id"],result["station_name"],result["cta_as_of"]),("40670","Western (Blue - O'Hare Branch)","2026-08-29T12:00:00-05:00"))
+
+    def test_explicit_forest_park_overrides_wrong_station_plan_without_external_calls(self):
+        calls={"cta":0,"final":0}
+        class CTA:
+            def fetch(self,*_args): calls["cta"] += 1
+        server=make_server(
+            self.db,0,
+            planner=lambda *_args:{"operation":"arrivals","station_id":"40670"},
+            arrivals_client=CTA(),
+            answerer=lambda *_args:calls.__setitem__("final",calls["final"]+1),
+        )
+        threading.Thread(target=server.serve_forever,daemon=True).start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+        body=json.dumps({"question":"Next train at Western Blue Line Forest Park branch?"}).encode()
+        connection.request("POST","/api/ask",body=body,headers={"Content-Type":"application/json"})
+        response=connection.getresponse(); result=json.loads(response.read()); connection.close()
+        self.assertEqual(response.status,200)
+        self.assertEqual(result["answer"],"The requested station is Western (Blue - Forest Park Branch). Should I use that station?")
+        self.assertEqual(result["lookup_type"],"clarification")
+        self.assertEqual(calls,{"cta":0,"final":0})
+
+    def test_final_context_utf8_cap_trims_predictions_and_discloses_true_omissions(self):
+        snapshot=json.dumps({"metadata":{},"padding":"駅"*5000},ensure_ascii=False)
+        lookup={"station":{"map_id":"40670","name":"Western"},"as_of":"2026-08-29T12:00:00-05:00",
+                "predictions":[{"rn":str(i),"destNm":"🚆"*400} for i in range(10)],
+                "prediction_counts":{"total":10,"returned":10,"omitted":0}}
+        context=build_final_context(snapshot,lookup,limit=18000)
+        self.assertLessEqual(len(context.encode("utf-8")),18000)
+        decoded=json.loads(context); counts=decoded["authoritative_lookup"]["prediction_counts"]
+        self.assertEqual(counts["total"],10)
+        self.assertEqual(counts["returned"],len(decoded["authoritative_lookup"]["predictions"]))
+        self.assertEqual(counts["omitted"],10-counts["returned"])
+        self.assertGreater(counts["omitted"],0)
+
+    def test_arrivals_missing_key_timeout_and_provider_failure_have_safe_http_errors(self):
+        def planner(_question,_catalog): return {"operation":"arrivals","station_id":"40670"}
+        cases=[(None,503,"question answering is not configured"),(ArrivalsTimeout(),504,"question provider timed out"),(ArrivalsError("secret URL key=secret provider body"),502,"CTA arrivals unavailable")]
+        for failure,expected_status,expected_error in cases:
+            class CTA:
+                def fetch(self,*_args):
+                    if failure is None:
+                        from cta_pipeline.arrivals import TrainTrackerArrivalsClient
+                        return TrainTrackerArrivalsClient().fetch(*_args)
+                    raise failure
+            server=make_server(self.db,0,planner=planner,arrivals_client=CTA(),answerer=lambda *_:"unused")
+            threading.Thread(target=server.serve_forever,daemon=True).start()
+            try:
+                with patch.dict("os.environ",{},clear=True):
+                    connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+                    body=json.dumps({"question":"next train at Western Blue Line O'Hare branch?"}).encode()
+                    connection.request("POST","/api/ask",body=body,headers={"Content-Type":"application/json"})
+                    response=connection.getresponse(); result=json.loads(response.read()); connection.close()
+                self.assertEqual(response.status,expected_status)
+                self.assertEqual(result,{"error":expected_error})
+                self.assertNotIn("secret",json.dumps(result).lower())
+            finally:
+                server.shutdown(); server.server_close()
 
 
 if __name__ == "__main__":
