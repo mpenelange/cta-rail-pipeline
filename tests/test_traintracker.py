@@ -59,6 +59,21 @@ class TrainTrackerClientTests(unittest.TestCase):
         self.assertEqual(vehicle["vehicle"], {"id":"3:Red3:827", "label":"Howard"})
         self.assertEqual(vehicle["timestamp"], 1788024864)
 
+    def test_single_train_object_matches_one_element_list(self):
+        _, list_feed = self.client().fetch()
+        document = copy.deepcopy(self.document)
+        document["ctatt"]["route"][0]["train"] = document["ctatt"]["route"][0]["train"][0]
+        _, object_feed = self.client(document).fetch()
+        self.assertEqual(object_feed, list_feed)
+
+    def test_rejects_none_and_scalar_train_cardinality(self):
+        for trains in (None, "train", 1, True):
+            document = copy.deepcopy(self.document)
+            document["ctatt"]["route"][0]["train"] = trains
+            with self.subTest(trains=trains), self.assertRaisesRegex(
+                    TelemetryError, "malformed or oversized TrainTracker trains"):
+                self.client(document).fetch()
+
     def test_empty_companion_uses_same_cycle_timestamp(self):
         positions = self.client()
         _, vehicle_feed = positions.fetch()

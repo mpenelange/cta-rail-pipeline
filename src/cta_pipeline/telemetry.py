@@ -210,6 +210,8 @@ class TrainTrackerPositionsClient:
                 raise TelemetryError("duplicate TrainTracker route")
             seen_routes.add(route_name)
             trains=route.get("train")
+            if isinstance(trains,dict):
+                trains=[trains]
             if not isinstance(trains,list) or len(entities)+len(trains)>MAX_ENTITIES:
                 raise TelemetryError("malformed or oversized TrainTracker trains")
             route_id=TRAIN_TRACKER_ROUTE_IDS[route_name]

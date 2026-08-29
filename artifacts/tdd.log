@@ -881,3 +881,15 @@ RED 2026-08-29 native `.env` OpenAI URL regression:
 GREEN 2026-08-29 native `.env` OpenAI URL regression:
 - `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_native_launcher -v`
 - Exact result: exit 0; Ran 20 tests in 0.568s and passed (`OK`), including generic `.env`, process-over-file, native override, CLI override, and safe invalid-URL cases.
+
+RED 2026-08-29 Train Tracker singleton-object cardinality:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_traintracker.TrainTrackerClientTests.test_single_train_object_matches_one_element_list -v`
+- Exact result: exit 1; Ran 1 test in 0.004s; raised `TelemetryError: malformed or oversized TrainTracker trains` for the valid sole train object.
+
+GREEN 2026-08-29 Train Tracker singleton-object cardinality:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_traintracker.TrainTrackerClientTests.test_single_train_object_matches_one_element_list tests.test_traintracker.TrainTrackerClientTests.test_rejects_none_and_scalar_train_cardinality -v`
+- Exact result: exit 0; Ran 2 tests in 0.004s and passed (`OK`).
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_traintracker -v`
+- Exact result: exit 0; Ran 14 tests in 1.143s and passed (`OK`).
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+- Exact result: exit 0; Ran 135 tests in 21.492s and passed (`OK`).
