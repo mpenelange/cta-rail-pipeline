@@ -108,6 +108,13 @@ Example demo output:
 - `POST /api/ask` — ask the configured OpenAI-compatible model about current CTA status
   or live station arrivals (JSON body `{"question":"..."}`, maximum 1,000 characters).
 
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/ask \
+  -H 'Content-Type: application/json' \
+  --data '{"question":"When is the next Red Line train at Clark/Lake?"}'
+curl -sS http://127.0.0.1:8000/api/telemetry
+```
+
 The question flow is deliberately **plan → validate → retrieve → answer**. A first,
 strict-JSON model call sees only the bounded question and bundled authoritative catalog
 of all 143 CTA rail parent stations. The checked-in catalog is pinned to exact CTA source
@@ -134,6 +141,33 @@ Train Tracker mode the position feed does not provide GTFS predictions; station 
 come only from the separate Train Tracker Arrivals endpoint and are never inferred from
 positions. Missing model configuration returns 503; provider failures return
 a safe 502/504-style response without a fabricated fallback answer.
+
+The current status snapshot is deliberately summarized; it does not include every vehicle row.
+Use `/api/vehicles` for the bounded vehicle listing; even then, treat source omissions
+as data limitations rather than evidence that a train or condition does not exist.
+
+### Editable question prompts
+
+The tracked defaults are `src/cta_pipeline/prompts/lookup_planner.txt` and
+`src/cta_pipeline/prompts/final_grounded_answer.txt`. Set
+`CTA_ASK_PLANNER_PROMPT_FILE` or `CTA_ASK_ANSWER_PROMPT_FILE` to replace the respective
+default. Each model call reads its file again, so a valid edit applies to the next question
+without restarting the server. Files must be nonempty, NUL-free, valid UTF-8 and at most
+8 KiB. Missing, unreadable, or invalid configured overrides fail closed as the same safe
+provider-unavailable response; the application never falls back to a bundled prompt when
+an override was configured.
+
+Relative paths resolve from the current working directory. For native launches, prefer a
+repo-relative path such as `config/ask-answer.txt`. In containers, mount the file and use
+its absolute container path, for example `/run/cta-prompts/ask-answer.txt`.
+
+Prompt diagnosis:
+
+| Symptom | Check |
+|---|---|
+| wrong `lookup_type` or unnecessary clarification | Lookup planner prompt or planner model |
+| correct lookup metadata but poor prose | Final answer prompt or answer model |
+| missing or incorrect authoritative fields | Upstream source/data limitation; a prompt cannot restore absent facts |
 
 Train Tracker arrivals are a short operational prediction horizon, not a timetable or
 trip planner. Predictions may change or disappear, scheduled predictions are identified
@@ -164,6 +198,8 @@ Responses include normalized agency facts, line colors, deterministic or model e
 | `OPENAI_API_KEY` | unset | Enables optional model extraction when non-empty |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible API root |
 | `OPENAI_MODEL` | `gpt-5-mini` | Extraction model name |
+| `CTA_ASK_PLANNER_PROMPT_FILE` | bundled `lookup_planner.txt` | Optional lookup-planner prompt path |
+| `CTA_ASK_ANSWER_PROMPT_FILE` | bundled `final_grounded_answer.txt` | Optional final grounded-answer prompt path |
 
 Copy `.env.example` as a reference; Python does not load `.env` files automatically. Export values in your shell or supply them through Compose.
 

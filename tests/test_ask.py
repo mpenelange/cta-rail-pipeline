@@ -209,6 +209,39 @@ class AskEndpointTests(unittest.TestCase):
                     self.assertEqual(result,{"error":"question provider unavailable"})
                     self.assertNotIn(secret,json.dumps(result))
 
+    def test_invalid_planner_and_answer_prompts_are_exact_generic_502s(self):
+        body=json.dumps({"question":"Status?"}).encode(); content={"Content-Type":"application/json"}
+        secret="SECRET PROMPT CONTENT"
+
+        def request_from(server):
+            connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+            connection.request("POST","/api/ask",body,content)
+            response=connection.getresponse(); result=response.status,json.loads(response.read())
+            connection.close(); return result
+
+        for prompt_kind in ("planner","answer"):
+            with self.subTest(prompt_kind=prompt_kind):
+                path=Path(self.tmp.name)/f"secret-{prompt_kind}.txt"
+                path.write_text(secret+"\x00",encoding="utf-8")
+                if prompt_kind=="planner":
+                    server=make_server(self.db,0)
+                    env_name="CTA_ASK_PLANNER_PROMPT_FILE"
+                else:
+                    server=make_server(self.db,0,planner=lambda _question,_catalog:{"operation":"none"})
+                    env_name="CTA_ASK_ANSWER_PROMPT_FILE"
+                worker=threading.Thread(target=server.serve_forever,daemon=True); worker.start()
+                try:
+                    env={"OPENAI_BASE_URL":"http://provider.invalid/v1","OPENAI_API_KEY":"key","OPENAI_MODEL":"model",env_name:str(path)}
+                    with patch.dict("os.environ",env,clear=True):
+                        status,result=request_from(server)
+                finally:
+                    server.shutdown(); server.server_close(); worker.join(timeout=2)
+                self.assertEqual(status,502)
+                self.assertEqual(result,{"error":"question provider unavailable"})
+                rendered=json.dumps(result)
+                self.assertNotIn(str(path),rendered)
+                self.assertNotIn(secret,rendered)
+
     def test_provider_redirects_are_rejected_without_forwarding_authorization(self):
         sink_requests=[]
         class Sink(BaseHTTPRequestHandler):
