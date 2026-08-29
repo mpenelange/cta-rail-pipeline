@@ -512,3 +512,176 @@ FINAL GREEN 2026-08-29 independent-review blocker verification:
 - `sh -n run-native.sh` -> exit 0, no output.
 - `test -x run-native.sh` -> exit 0, no output.
 - `git diff --check` -> exit 0, no output.
+
+RED 2026-08-29 dashboard question request-validation slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_invalid_content_type_length_and_question_shape -v`
+- Exact result: exit 1; 1 test ran in 0.535s and failed with 12 errors because
+  `POST /api/ask` returned the base handler's empty 501 responses.
+
+GREEN 2026-08-29 dashboard question request-validation slice:
+- Same focused request-validation command.
+- Exact result: exit 0; 1 test ran in 0.520s and passed (`OK`).
+
+RED 2026-08-29 grounded current-snapshot/provider happy-path slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_happy_path_uses_fresh_bounded_grounded_snapshot_and_plain_text_answer -v`
+- Exact result: exit 1; 1 test ran in 0.512s and failed because the valid request
+  still returned the placeholder 503 instead of calling the fake provider.
+
+GREEN 2026-08-29 grounded current-snapshot/provider happy-path slice:
+- Same focused grounded happy-path command.
+- Exact result: exit 0; 1 test ran in 1.016s and passed (`OK`).
+
+GREEN 2026-08-29 safe provider-failure/configuration characterization:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_missing_configuration_and_provider_failures_are_safe -v`
+- Exact result: exit 0; 1 test ran in 1.036s and passed (`OK`); the preceding
+  provider implementation already included safe handling for these required cases.
+
+RED 2026-08-29 accessible dashboard question-panel slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_dashboard_has_accessible_compact_question_panel_and_safe_rendering -v`
+- Exact result: exit 1; 1 test ran in 0.515s and failed because the dashboard did
+  not yet contain the question controls or safe answer-rendering code.
+
+GREEN 2026-08-29 accessible dashboard question-panel slice:
+- Same focused dashboard question-panel command.
+- Exact result: exit 0; 1 test ran in 0.510s and passed (`OK`).
+
+RED 2026-08-29 deterministic total-context-bound slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_snapshot_total_bound_preserves_valid_deterministic_json -v`
+- Exact result: exit 1; 1 test ran in 0.509s and errored because byte-style
+  string slicing met the cap but produced unterminated, invalid JSON.
+
+GREEN 2026-08-29 deterministic total-context-bound slice:
+- Same focused total-context-bound command.
+- Exact result: exit 0; 1 test ran in 0.509s and passed (`OK`).
+
+RED 2026-08-29 question-feature documentation slice:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_readme_documents_question_endpoint_and_snapshot_limits -v`
+- Exact result: exit 1; 1 test ran in 0.509s and failed because `POST /api/ask`
+  and its bounded-current-snapshot limitations were not yet documented.
+
+GREEN 2026-08-29 question-feature documentation slice:
+- Same focused question-feature documentation command.
+- Exact result: exit 0; 1 test ran in 0.511s and passed (`OK`).
+
+GREEN 2026-08-29 complete dashboard-question focused suite:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask -v`
+- Exact result: exit 0; 6 tests ran in 4.138s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 dashboard current-status question feature:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; 97 tests ran in 10.764s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+
+RED 2026-08-29 provider redirect authorization regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_provider_redirects_are_rejected_without_forwarding_authorization -v`
+- Exact result: exit 1; Ran 1 test in 1.511s and failed because the cross-origin
+  sink received `Bearer redirect-secret` for three followed redirect responses.
+
+GREEN 2026-08-29 provider redirect authorization regression:
+- Same focused provider redirect command after installing a no-redirect opener.
+- Exact result: exit 0; Ran 1 test in 1.510s and passed (`OK`); none of the
+  301/302/303/307/308 destinations was contacted.
+
+RED 2026-08-29 truthful snapshot count metadata regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_snapshot_metadata_reports_true_totals_returned_and_omitted -v`
+- Exact result: exit 1; Ran 1 test in 0.509s and errored with
+  `KeyError: 'snapshot_counts'` because capped query results had no true totals.
+
+GREEN 2026-08-29 truthful snapshot count metadata regression:
+- Same focused truthful snapshot count command after adding same-transaction totals.
+- Exact result: exit 0; Ran 1 test in 0.512s and passed (`OK`).
+
+RED 2026-08-29 UTF-8 snapshot byte-bound regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_unicode_snapshot_and_provider_payload_are_bounded_by_utf8_bytes -v`
+- Exact result: exit 1; Ran 1 test in 1.011s and errored because the implementation
+  exposed only the character-based `MAX_ASK_CONTEXT_CHARS` limit.
+
+GREEN 2026-08-29 UTF-8 snapshot byte-bound regression:
+- Same focused UTF-8 byte-bound command after enforcing encoded byte lengths.
+- Exact result: exit 0; Ran 1 test in 1.011s and passed (`OK`).
+
+RED 2026-08-29 malformed decoded alert-shape regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_malformed_decoded_alert_shapes_are_skipped_and_counted -v`
+- Exact result: exit 1; Ran 1 test in 0.509s and failed because all three rows,
+  including two list-shaped decoded JSON values, were returned as service alerts.
+
+GREEN 2026-08-29 malformed decoded alert-shape regression:
+- Same focused malformed decoded alert-shape command after dictionary validation.
+- Exact result: exit 0; Ran 1 test in 0.509s and passed (`OK`).
+
+RED 2026-08-29 explicit snapshot read-transaction regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_snapshot_uses_one_explicit_read_transaction_and_rolls_back_on_error -v`
+- Exact result: exit 1; Ran 1 test in 0.509s and failed because the first operation
+  was a snapshot SELECT rather than `BEGIN`.
+
+GREEN 2026-08-29 explicit snapshot read-transaction regression:
+- Same focused explicit transaction command after beginning the transaction before
+  every snapshot SELECT and count query.
+- Exact result: exit 0; Ran 1 test in 0.509s and passed (`OK`), including injected-error rollback cleanup.
+
+TEST-CORRECTION 2026-08-29 ambiguous HTTP framing regression:
+- The first focused run used Content-Length 21 for a 20-byte body, causing two
+  expected server read waits and client timeouts. The fixture length was corrected
+  to 20; no implementation change was made for this correction.
+
+RED 2026-08-29 ambiguous HTTP framing regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_duplicate_content_length_and_any_transfer_encoding -v`
+- Exact corrected result: exit 1; Ran 1 test in 0.513s with two failures because
+  duplicate Content-Length and TE+CL requests reached normal handling and returned 503.
+
+GREEN 2026-08-29 ambiguous HTTP framing regression:
+- Same focused ambiguous HTTP framing command after pre-read header validation.
+- Exact result: exit 0; Ran 1 test in 0.515s and passed (`OK`).
+
+GREEN 2026-08-29 complete ask-feature regression suite:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask -v`
+- Exact result after the final malformed-alert total query and README clarification:
+  exit 0; Ran 12 tests in 8.864s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 POST /api/ask independent-review blockers:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; Ran 103 tests in 15.465s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+RED 2026-08-29 short POST body HTTP framing regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_short_body_without_invoking_provider -v`
+- Exact result: exit 1; Ran 1 test in 0.511s and failed because the endpoint
+  returned 503 after accepting the complete JSON prefix despite the declared
+  Content-Length being five bytes larger than the half-closed request body.
+
+GREEN 2026-08-29 short POST body and canonical Content-Length regressions:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_short_body_without_invoking_provider tests.test_ask.AskEndpointTests.test_rejects_invalid_content_type_length_and_question_shape -v`
+- Exact result: exit 0; Ran 2 tests in 1.081s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 final-review HTTP framing blocker:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; Ran 104 tests in 15.978s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.
+
+RED 2026-08-29 canonical Content-Length leading-zero regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_content_length_with_leading_zeroes -v`
+- Exact result: exit 1; Ran 1 test with subtests in 0.512s and failed three
+  assertions. `Content-Length: 00` reached JSON parsing and returned `malformed
+  JSON body`; `Content-Length: 017` invoked the provider and returned 503; the
+  provider-not-called assertion consequently also failed.
+
+GREEN 2026-08-29 canonical Content-Length leading-zero regression:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest tests.test_ask.AskEndpointTests.test_rejects_content_length_with_leading_zeroes tests.test_ask.AskEndpointTests.test_rejects_invalid_content_type_length_and_question_shape tests.test_ask.AskEndpointTests.test_happy_path_uses_fresh_bounded_grounded_snapshot_and_plain_text_answer -v`
+- Exact result after accepting only `0` or a nonzero ASCII decimal without a
+  leading zero: exit 0; Ran 3 tests in 2.051s and passed (`OK`).
+
+FINAL GREEN 2026-08-29 canonical Content-Length leading-zero fix:
+- `PYTHONPATH=src python3 -W error::ResourceWarning -m unittest discover -s tests -v`
+  -> exit 0; Ran 105 tests in 16.173s and passed (`OK`).
+- `python3 -m compileall -q src tests` -> exit 0, no output.
+- `sh -n run-native.sh` -> exit 0, no output.
+- `test -x run-native.sh` -> exit 0, no output.
+- `git diff --check` -> exit 0, no output.

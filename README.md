@@ -102,6 +102,20 @@ Example demo output:
 - `GET /api/telemetry` — bounded operations summary, active source, and actual source timestamps.
 - `GET /api/vehicles?limit=100` — current vehicle state (maximum 200).
 - `GET /api/anomalies?limit=100` — recent active deterministic anomalies (maximum 200).
+- `POST /api/ask` — ask the configured local OpenAI-compatible model a question (JSON
+  body `{"question":"..."}`, maximum 1,000 characters) about current CTA status.
+
+Question answers use a fresh, current bounded SQLite snapshot containing the latest
+successful telemetry timestamps/source, current route counts, delayed Train Tracker
+vehicles, active anomalies, and active alerts with structured facts. Snapshot metadata
+reports true totals plus returned, omitted, and malformed-alert counts, so capped lists
+are not presented as complete. The UTF-8 context bytes, item text, provider request and
+response reads, and answers are capped; raw payloads, credentials, and arbitrary history
+are excluded. Provider redirects are rejected. The model is instructed to report unsupported or stale
+information instead of inventing causes, ETAs, predictions, or disruptions. In
+Train Tracker mode the position feed does not provide GTFS predictions, so the question
+box cannot infer them. Missing model configuration returns 503; provider failures return
+a safe 502/504-style response without a fabricated fallback answer.
 
 Responses include normalized agency facts, line colors, deterministic or model extraction provenance, confidence, exposure where a numeric station ID matches, and revision count. SQL values are parameterized. JSON uses the standard encoder and the dashboard escapes all API-derived content before inserting it into the document. A restrictive content-security policy and `nosniff` header are set.
 
