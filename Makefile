@@ -1,16 +1,7 @@
-.PHONY: test compile demo serve clean
-
+.PHONY: test ingest serve
 test:
-	PYTHONPATH=src python3 -m unittest discover -s tests -v
-
-compile:
-	python3 -m compileall -q src tests
-
-demo:
-	PYTHONPATH=src python3 -m cta_pipeline demo
-
+	uv run python -m unittest discover -s tests -v
+ingest:
+	uv run cta-pipeline ingest
 serve:
-	PYTHONPATH=src python3 -m cta_pipeline serve
-
-clean:
-	find src tests -type d -name __pycache__ -prune -exec rm -r {} +
+	uv run cta-pipeline serve
