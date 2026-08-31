@@ -1,13 +1,14 @@
 services:
   app:
     build: .
+    stdin_open: true
+    tty: true
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      CTA_API_KEY: ${CTA_API_KEY:?Set CTA_API_KEY}
       CTA_DB_PATH: /data/rag.db
-    ports:
-      - "${PORT:-8001}:8001"
     volumes:
       - pipeline-data:/data
 volumes:

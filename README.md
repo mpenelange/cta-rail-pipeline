@@ -1,57 +1,59 @@
-# Ask the Pipeline
+# CTA Signal
 
-A deliberately small example of an ingestion + RAG pipeline. CTA service alerts are
-the sample live source; the architecture is intended to be easy to reuse and explain.
+A deliberately small ingestion and retrieval-augmented generation pipeline with a
+terminal interface. CTA is the sample live source; the reusable pipeline is the point.
 
 ```text
-CTA API → normalize → versioned SQLite documents → FTS5 retrieval → LLM → website
+question → deterministic GTFS entity retrieval ───────────────┐
+CTA alerts → normalize → version in SQLite → FTS5 retrieval ───┤
+CTA GTFS → station/route/transfer graph ────────────────────────┼→ grounded LLM answer → TUI
+CTA arrivals → resolved station → live retrieval ──────────────┤
+structured clarification choices ──────────────────────────────┘
 ```
 
-Every ingestion run records its outcome. Changed alerts create immutable document
-versions; unchanged alerts do not. A question is tokenized into a bounded SQLite
-full-text query, and only the retrieved active documents are sent to an
-OpenAI-compatible model. The website displays both the corpus and retrieved source IDs.
+Changed alerts create immutable document versions. Questions retrieve only relevant
+active documents. Arrival questions fetch predictions just in time rather than indexing
+volatile data. Rather than asking an LLM to classify each question into a brittle schema,
+the backend finds station and route entities in the authoritative GTFS catalog and retrieves
+their connected evidence neighborhood: routes, stops, transfers, relevant alerts, and live
+arrivals when the wording asks for fresh timing. Ambiguous station names produce keyboard-
+selectable choices before retrieval. The LLM is used only for grounded synthesis, so new
+wording does not require a new intent flow.
 
-## Run locally
+## Run
 
-Install [uv](https://docs.astral.sh/uv/). The application has no third-party runtime
-dependencies; uv creates the environment and installs the local package automatically.
+Install [uv](https://docs.astral.sh/uv/), then:
 
 ```bash
 cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-uv run cta-pipeline serve
+# Add OPENAI_API_KEY and CTA_API_KEY to .env
+uv run cta-pipeline
 ```
 
-Alternatively, copy `.env.example` to `.env` and fill in the values. The application
-loads `.env` automatically; variables already exported by the shell take precedence.
-Use `--env-file path/to/file` to select a different file.
-
-Open <http://127.0.0.1:8001>. `serve` performs one ingestion before starting. To use
-an existing local corpus without fetching, pass `--skip-ingest`. Run ingestion alone
-with `uv run cta-pipeline ingest`.
-
-Port 8001 is the default. Override it when needed:
+The command ingests a fresh alert snapshot and opens the TUI. Use the arrow keys and
+Enter for clarification choices; press Escape or Ctrl-C to exit. To reuse the local
+corpus without fetching first:
 
 ```bash
-uv run cta-pipeline serve --port 9000
+uv run cta-pipeline tui --skip-ingest
 ```
+
+Run ingestion without opening the interface:
+
+```bash
+uv run cta-pipeline ingest
+```
+
+The application loads `.env` automatically without overriding variables already in the
+process environment. Select another file with `--env-file path/to/file`.
 
 Configuration:
 
-- `OPENAI_API_KEY` — required for answers.
-- `OPENAI_BASE_URL` — optional OpenAI-compatible API root; defaults to OpenAI.
+- `OPENAI_API_KEY` — required for generated answers.
+- `OPENAI_BASE_URL` — optional OpenAI-compatible API root.
 - `OPENAI_MODEL` — defaults to `gpt-5-mini`.
-- `CTA_API_KEY` — enables live Train Tracker arrival questions.
+- `CTA_API_KEY` — required for live Train Tracker arrivals.
 - `CTA_DB_PATH` — defaults to `./data/rag.db`.
-
-## HTTP interface
-
-- `GET /` — question UI, current corpus, and recent ingestion runs.
-- `GET /api/snapshot` — normalized active documents.
-- `GET /api/runs` — ingestion history.
-- `GET /api/health` — process health.
-- `POST /api/ask` — `{"question":"What is affecting the Red Line?"}`.
 
 ## Test
 
@@ -59,5 +61,5 @@ Configuration:
 uv run python -m unittest discover -s tests -v
 ```
 
-The focused suite tests versioning/idempotency, retrieval, LLM context boundaries,
-and safe website rendering.
+The focused suite covers ingestion versioning, retrieval, station resolution,
+clarification routing, LLM context boundaries, and TUI state transitions.

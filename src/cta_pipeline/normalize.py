@@ -2,6 +2,7 @@ import html
 import json
 import re
 from .limits import MAX_ID, MAX_LIST_ITEMS, MAX_LIST_TEXT, MAX_TEXT
+from .routes import route_name
 
 
 class PayloadError(ValueError):
@@ -41,7 +42,7 @@ def _service_values(service):
         route = item.get("Route") or item.get("ServiceId") or item.get("RouteId")
         name = item.get("StopName") or item.get("ServiceName") or item.get("StationName")
         sid = item.get("StopId") or item.get("StationId")
-        if route: lines.append(clean_text(route, MAX_LIST_TEXT))
+        if route: lines.append(route_name(clean_text(route, MAX_LIST_TEXT)))
         if name and not route: stations.append(clean_text(name, MAX_LIST_TEXT))
         elif item.get("StopName"): stations.append(clean_text(item["StopName"], MAX_LIST_TEXT))
         if sid: station_ids.append(str(sid)[:MAX_LIST_TEXT])

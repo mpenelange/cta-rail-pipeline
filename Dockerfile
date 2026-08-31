@@ -4,5 +4,4 @@ WORKDIR /app
 COPY src ./src
 RUN mkdir -p /data && useradd --create-home --uid 10001 app && chown -R app:app /data
 USER app
-EXPOSE 8001
-CMD ["python3","-m","cta_pipeline","serve","--host","0.0.0.0","--port","8001"]
+CMD ["python3","-m","cta_pipeline","tui"]

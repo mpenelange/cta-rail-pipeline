@@ -8,10 +8,15 @@ CREATE TABLE IF NOT EXISTS document_versions(id INTEGER PRIMARY KEY,source_id TE
 CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(source_id UNINDEXED,search_text);
 """
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self,exc_type,exc,traceback):
+        try: return super().__exit__(exc_type,exc,traceback)
+        finally: self.close()
+
 class Database:
     def __init__(self,path): self.path=Path(path)
     def connect(self):
-        self.path.parent.mkdir(parents=True,exist_ok=True); connection=sqlite3.connect(self.path,timeout=10); connection.row_factory=sqlite3.Row
+        self.path.parent.mkdir(parents=True,exist_ok=True); connection=sqlite3.connect(self.path,timeout=10,factory=ClosingConnection); connection.row_factory=sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON"); connection.execute("PRAGMA journal_mode=WAL"); return connection
     def migrate(self):
         with self.connect() as connection: connection.executescript(SCHEMA)

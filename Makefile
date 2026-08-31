@@ -1,7 +1,7 @@
-.PHONY: test ingest serve
+.PHONY: test ingest tui
 test:
 	uv run python -m unittest discover -s tests -v
 ingest:
 	uv run cta-pipeline ingest
-serve:
-	uv run cta-pipeline serve
+tui:
+	uv run cta-pipeline
