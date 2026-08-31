@@ -1,7 +1,0 @@
-FROM python:3.13-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src CTA_DB_PATH=/data/rag.db
-WORKDIR /app
-COPY src ./src
-RUN mkdir -p /data && useradd --create-home --uid 10001 app && chown -R app:app /data
-USER app
-CMD ["python3","-m","cta_pipeline","tui"]
