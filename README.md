@@ -1,24 +1,6 @@
 # CTA Signal
 
-A deliberately small ingestion and retrieval-augmented generation pipeline with a
-terminal interface. CTA is the sample live source; the reusable pipeline is the point.
-
-```text
-question → deterministic GTFS entity retrieval ───────────────┐
-CTA alerts → normalize → version in SQLite → FTS5 retrieval ───┤
-CTA GTFS → station/route/transfer graph ────────────────────────┼→ grounded LLM answer → TUI
-CTA arrivals → resolved station → live retrieval ──────────────┤
-structured clarification choices ──────────────────────────────┘
-```
-
-Changed alerts create immutable document versions. Questions retrieve only relevant
-active documents. Arrival questions fetch predictions just in time rather than indexing
-volatile data. Rather than asking an LLM to classify each question into a brittle schema,
-the backend finds station and route entities in the authoritative GTFS catalog and retrieves
-their connected evidence neighborhood: routes, stops, transfers, relevant alerts, and live
-arrivals when the wording asks for fresh timing. Ambiguous station names produce keyboard-
-selectable choices before retrieval. The LLM is used only for grounded synthesis, so new
-wording does not require a new intent flow.
+CTA Signal is a terminal application for asking natural-language questions about Chicago rail service. A deterministic retrieval layer combines live arrivals and alerts with a GTFS station, route, and transfer graph, then passes the relevant evidence to an LLM for a grounded answer or requests clarification when a station is ambiguous.
 
 ## Run
 
